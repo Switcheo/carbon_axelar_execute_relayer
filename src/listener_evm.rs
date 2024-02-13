@@ -1,3 +1,4 @@
+use std::str::FromStr;
 use std::sync::Arc;
 
 use ethers::{
@@ -7,10 +8,10 @@ use ethers::{
     providers::{Provider, Ws},
 };
 use sqlx::PgPool;
-use std::str::FromStr;
 use sqlx::types::BigDecimal;
 
 use crate::conf::ChainConfig;
+use crate::db::DbWithdrawTokenAcknowledgedEvent;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, EthEvent)]
 #[ethevent(name = "ContractCallApproved", abi = "ContractCallApproved(bytes32,string,string,address,bytes32,bytes32,uint256)")]
@@ -27,12 +28,14 @@ pub struct ContractCallApprovedEvent {
     pub source_event_index: U256,
 }
 
+
 pub async fn init_all_ws(evm_chains: Vec<ChainConfig>, pg_pool: Arc<PgPool>) {
     for chain in evm_chains {
         let pg_pool_clone = pg_pool.clone();
+        let chain_clone = chain.clone();
         println!("Subscribing to {} on {}", &chain.name, &chain.ws_url);
         tokio::spawn(async move {
-            if let Err(e) = init_ws(&chain.ws_url.clone(), &chain.axelar_gateway_proxy.clone(), &chain.carbon_axelar_gateway.clone(), pg_pool_clone).await {
+            if let Err(e) = init_ws(chain_clone, pg_pool_clone).await {
                 eprintln!("Error initializing WebSocket for {}: {}", &chain.ws_url, e);
             }
         });
@@ -40,16 +43,16 @@ pub async fn init_all_ws(evm_chains: Vec<ChainConfig>, pg_pool: Arc<PgPool>) {
 }
 
 // init_ws connect to the evm network via WebSocket and watch for relevant events
-async fn init_ws(ws_url: &String, axelar_gateway_proxy: &str, carbon_axelar_gateway: &str, pg_pool: Arc<PgPool>) -> Result<(), Box<dyn std::error::Error>> {
+async fn init_ws(chain_config: ChainConfig, pg_pool: Arc<PgPool>) -> Result<(), Box<dyn std::error::Error>> {
 
     // Connect to the Ethereum node
-    let provider = Provider::<Ws>::connect_with_reconnects(ws_url, 100).await?;
+    let provider = Provider::<Ws>::connect_with_reconnects(chain_config.ws_url, 100).await?;
     let provider = Arc::new(provider);
 
-    let address = axelar_gateway_proxy.parse::<Address>()?;
+    let address = chain_config.axelar_gateway_proxy.parse::<Address>()?;
     let address = ValueOrArray::Value(address);
     // filter for contract_address (2nd indexed topic)
-    let topic2 = H256::from(carbon_axelar_gateway.parse::<H160>()?);
+    let topic2 = H256::from(chain_config.carbon_axelar_gateway.parse::<H160>()?);
     let event = ContractCallApprovedEvent::new::<_, Provider<Ws>>(Filter::new().topic2(topic2), Arc::clone(&provider)).address(address);
     let mut events = event.subscribe().await?.take(5);
 
@@ -57,21 +60,56 @@ async fn init_ws(ws_url: &String, axelar_gateway_proxy: &str, carbon_axelar_gate
         match log {
             Ok(event) => {
                 println!("ContractCallApprovedEvent: {:?}", event);
+                let payload_hash = format!("{:?}", event.payload_hash);
+
+                // check if we should broadcast this event by checking the withdraw_token_acknowledged_events
+                let result = sqlx::query_as::<_, DbWithdrawTokenAcknowledgedEvent>(
+                    r#"
+                        SELECT * FROM withdraw_token_acknowledged_events
+                        WHERE payload_hash = $1
+                        AND (coin->>'amount')::numeric > 0
+                        AND (relay_fee->>'amount')::numeric > 0
+                        "#,
+                )
+                    .bind(&payload_hash)
+                    .fetch_optional(&*pg_pool).await?;
+
+                let withdraw_event = match result {
+                    Some(event) => {
+                        println!("Found event: {:?}", event);
+                        event
+                    }
+                    None => {
+                        println!("payload_hash {:?} does not exist or has 0 amounts", &payload_hash);
+                        continue;
+                    }
+                };
+
+                // TODO: translate to handle different relay fee denom and amounts
+                if withdraw_event.relay_fee.amount < 10 {
+                    // 10 is just an arbitrary number, we should do custom logic to convert price
+                    continue;
+                }
+
+
                 // Process the event data as needed
                 // save to db
                 sqlx::query!(
-                    "INSERT INTO contract_call_approved_events (command_id, source_chain, source_address, contract_address, payload_hash, source_tx_hash, source_event_index) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                    "INSERT INTO contract_call_approved_events (command_id, blockchain, broadcast_status, source_chain, source_address, contract_address, payload_hash, source_tx_hash, source_event_index, payload) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
                     format!("{:?}", event.command_id),
+                    chain_config.name,
+                    "not_broadcasted",
                     event.source_chain,
                     event.source_address,
                     format!("{:?}", event.contract_address),
-                    format!("{:?}", event.payload_hash),
+                    &payload_hash,
                     format!("{:?}", event.source_tx_hash),
                     BigDecimal::from_str(&event.source_event_index.to_string()).unwrap(),
+                    &withdraw_event.payload
                 )
                     .execute(&*pg_pool)
                     .await?;
-            },
+            }
             Err(e) => println!("Error listening for ContractCallApprovedEvent logs: {:?}", e),
         }
     }

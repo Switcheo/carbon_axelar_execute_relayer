@@ -23,6 +23,7 @@ pub struct ChainConfig {
     pub ws_url: String,
     pub axelar_gateway_proxy: String,
     pub carbon_axelar_gateway: String,
+    pub relayer_private_key: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]

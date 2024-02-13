@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use futures_util::lock::Mutex;
+use ethers::utils::hex::{decode, encode};
+use ethers::utils::keccak256;
+use futures::lock::Mutex;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::PgPool;
@@ -110,12 +112,17 @@ async fn process_message(msg: String, pg_pool: Arc<PgPool>) {
                 let relay_fee = serde_json::from_str::<serde_json::Value>(&relay_fee).unwrap_or_default();
                 let relayer_deposit_address = event.attributes.iter().find(|a| a.key == "relayer_deposit_address").map(|a| a.value.clone()).unwrap_or_default();
                 let sender = event.attributes.iter().find(|a| a.key == "sender").map(|a| a.value.clone()).unwrap_or_default();
-                let payload_hash = event.attributes.iter().find(|a| a.key == "payload_hash").map(|a| a.value.clone()).unwrap_or_default();
+                let payload = event.attributes.iter().find(|a| a.key == "payload").map(|a| a.value.clone()).unwrap_or_default();
 
+                // get payload_hash
+                let payload_bytes = decode(payload.clone())
+                    .expect("Decoding failed");
+                let payload_hash = keccak256(&payload_bytes);
+                let payload_hash = encode(payload_hash);
 
                 // save event details to db
                 let result = sqlx::query!(
-                        "INSERT INTO withdraw_token_acknowledged_events (coin, connection_id, receiver, relay_fee, relayer_deposit_address, sender, payload_hash) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                        "INSERT INTO withdraw_token_acknowledged_events (coin, connection_id, receiver, relay_fee, relayer_deposit_address, sender, payload_hash, payload) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
                         coin,
                         connection_id,
                         receiver,
@@ -123,6 +130,7 @@ async fn process_message(msg: String, pg_pool: Arc<PgPool>) {
                         relayer_deposit_address,
                         sender,
                         payload_hash,
+                        payload,
                     )
                     .execute(&*pg_pool)
                     .await;

@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use futures_util::lock::Mutex;
-use futures_util::SinkExt;
-use futures_util::stream::StreamExt;
+use futures::lock::Mutex;
+use futures::SinkExt;
+use futures::stream::StreamExt;
 use serde_json::Value;
 use tokio::time::sleep;
 use tokio_tungstenite::{connect_async, tungstenite::Error as TungsteniteError, tungstenite::protocol::Message};

@@ -2,36 +2,37 @@
 
 ## Setup
 
-Install rust/cargo
-- check google
+#### Install rust/cargo
+- https://www.rust-lang.org/tools/install
 
-Install Postgres
-- check google
+#### Install Postgres
+- mac: `brew install postgresql@15`
+- ubuntu: https://www.postgresql.org/download/linux/ubuntu/
 
-Install sqlx
+#### Install sqlx
 ```bash
 cargo install sqlx-cli --no-default-features --features native-tls,postgres
 ```
 
-Create a `.env` file and add 
+#### Create a `.env` file and add 
 ```dotenv
 # Postgres
 DATABASE_URL=postgresql://localhost:5432/carbon_axelar_execute_relayer
 ```
 
-Run migration
+#### Run migration
 ```bash
 sqlx migrate run
 ```
 
-Copy sample config
+#### Copy sample config
 ```bash
 cp config.sample.toml config.toml
 ```
 
 ## Usage
 
-Run without compiling 
+#### Run without compiling 
 ```bash
 # run
 cargo run -- run
@@ -40,7 +41,7 @@ cargo run -- run
 cargo run -- run --config your_config.toml
 ```
 
-Compile binary
+#### Compile binary
 ```bash
 # compiles to ./target/debug/carbon_axelar_execute_relayer
 cargo build
@@ -48,7 +49,7 @@ cargo build
 cargo build --release
 ```
 
-Database
+#### Database
 ```bash
 # reset database
 sqlx database reset

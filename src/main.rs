@@ -58,26 +58,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(Commands::Run) => {
             // Spawn carbon_listener init_ws as a concurrent task
             let carbon_pg_pool = pg_pool.clone();
-            let carbon_task = tokio::spawn(async move {
+            let carbon_listen_task = tokio::spawn(async move {
                 listener_carbon::init_ws(&conf.carbon_ws_url, &conf.relayer_deposit_address, carbon_pg_pool).await;
             });
 
             // Spawn evm_listener init_ws as a concurrent task
             let evm_pg_pool = pg_pool.clone();
             let evm_chains = conf.evm_chains.clone();
-            let evm_task = tokio::spawn(async move {
+            let evm_listen_all_task = tokio::spawn(async move {
                 listener_evm::init_all_ws(evm_chains, evm_pg_pool).await;
             });
 
             // Spawn broadcaster_evm init as a concurrent task
             let broadcaster_evm_pg_pool = pg_pool.clone();
             let evm_chains = conf.evm_chains.clone();
-            let evm_task = tokio::spawn(async move {
+            let evm_execute_task = tokio::spawn(async move {
                 broadcaster_evm::init_all(evm_chains, broadcaster_evm_pg_pool).await;
             });
 
             // Wait for all spawned tasks to complete
-            let _ = tokio::join!(carbon_task, evm_task);
+            let _ = tokio::join!(carbon_listen_task, evm_listen_all_task, evm_execute_task);
         }
 
         None => {}
