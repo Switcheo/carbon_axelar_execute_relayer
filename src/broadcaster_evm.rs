@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
+use anyhow::{Context, Result};
 
 use ethers::core::k256::ecdsa::SigningKey;
 use ethers::prelude::*;
@@ -62,9 +63,6 @@ async fn queue_new_events_for_broadcast(pool: &PgPool, channel_tx_map: HashMap<S
         .fetch_all(pool)
         .await?;
 
-    println!("{:?}", events);
-
-
     for event in events {
         println!("New event found: {:?}", event);
         if let Some(sender) = channel_tx_map.get(&event.blockchain) {
@@ -89,7 +87,13 @@ async fn init_channels(evm_chains: Vec<ChainConfig>, pg_pool: Arc<PgPool>) -> Ha
 
         // spawn receiving logic
         tokio::spawn(async move {
-            let provider = init_provider(chain.clone()).await.expect("unable to initialize provider");
+            let provider = match init_provider(chain.clone()).await {
+                Ok(provider) => provider,
+                Err(e) => {
+                    eprintln!("Error initializing provider for {}: {}", chain.name, e);
+                    return
+                }
+            };
             let axelar_gateway = match chain.axelar_gateway_proxy.parse::<Address>() {
                 Ok(address) => address,
                 Err(e) => {
@@ -160,21 +164,20 @@ async fn init_channels(evm_chains: Vec<ChainConfig>, pg_pool: Arc<PgPool>) -> Ha
     channels
 }
 
-async fn init_provider(chain: ChainConfig) -> Result<Arc<SignerMiddleware<Provider<Http>, Wallet<SigningKey>>>, Box<dyn std::error::Error>> {
-    let provider = Arc::new({
-        // connect to the network
-        let provider = Provider::<Http>::try_from(
-            chain.rpc_url,
-        )?;
-        let chain_id = provider.get_chainid().await?;
+async fn init_provider(chain: ChainConfig) -> Result<Arc<SignerMiddleware<Provider<Http>, Wallet<SigningKey>>>> {
+    let provider = Provider::<Http>::try_from(chain.rpc_url)
+        .context("Failed to connect to the network")?;
 
-        // this wallet's private key
-        let wallet = chain.relayer_private_key
-            .parse::<LocalWallet>()?
-            .with_chain_id(chain_id.as_u64());
+    let chain_id = provider.get_chainid().await
+        .context("Failed to get chain ID")?;
 
-        SignerMiddleware::new(provider, wallet)
-    });
+    let wallet = chain.relayer_private_key.parse::<LocalWallet>()
+        .context("Error parsing wallet key")?;
+
+    let wallet = wallet.with_chain_id(chain_id.as_u64());
+
+    let provider = Arc::new(SignerMiddleware::new(provider, wallet));
+
     Ok(provider)
 }
 

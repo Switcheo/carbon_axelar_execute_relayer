@@ -18,6 +18,7 @@ struct WebSocketMessage {
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Result {
+    query: String,
     data: Data,
 }
 
@@ -30,22 +31,24 @@ struct Data {
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Value {
+    #[serde(rename = "TxResult")]
     tx_result: TxResult,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 struct TxResult {
     height: String,
+    tx: String,
     result: TxResultInner,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 struct TxResultInner {
     data: String,
-    events: Vec<Event>,
-    gas_used: String,
-    gas_wanted: String,
     log: String,
+    gas_wanted: String,
+    gas_used: String,
+    events: Vec<Event>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -115,7 +118,7 @@ async fn process_message(msg: String, pg_pool: Arc<PgPool>) {
                 let payload = event.attributes.iter().find(|a| a.key == "payload").map(|a| a.value.clone()).unwrap_or_default();
 
                 // get payload_hash
-                let payload_bytes = decode(payload.clone())
+                let payload_bytes = decode(strip_quotes(&payload.clone()))
                     .expect("Decoding failed");
                 let payload_hash = keccak256(&payload_bytes);
                 let payload_hash = encode(payload_hash);
@@ -124,13 +127,13 @@ async fn process_message(msg: String, pg_pool: Arc<PgPool>) {
                 let result = sqlx::query!(
                         "INSERT INTO withdraw_token_acknowledged_events (coin, connection_id, receiver, relay_fee, relayer_deposit_address, sender, payload_hash, payload) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
                         coin,
-                        connection_id,
-                        receiver,
+                        strip_quotes(&connection_id),
+                        strip_quotes(&receiver),
                         relay_fee,
-                        relayer_deposit_address,
-                        sender,
+                        strip_quotes(&relayer_deposit_address),
+                        strip_quotes(&sender),
                         payload_hash,
-                        payload,
+                        strip_quotes(&payload),
                     )
                     .execute(&*pg_pool)
                     .await;
@@ -143,7 +146,11 @@ async fn process_message(msg: String, pg_pool: Arc<PgPool>) {
             }
         }
         Err(e) => {
-            println!("Error parsing JSON: {:?}", e);
+            println!("Error parsing JSON: {:?}, JSON str:{:?}", e, msg);
         }
     }
+}
+
+fn strip_quotes(input: &str) -> String {
+    input.trim_matches('"').to_string()
 }

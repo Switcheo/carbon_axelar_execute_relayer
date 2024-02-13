@@ -51,7 +51,7 @@ impl JSONWebSocketClient {
         // Subscribe to each message using the HashMap
         for subscription in self.subscriptions.values() {
             let query = subscription.message.clone().into_text();
-            println!("subscribing to: {:?}", query.unwrap());
+            println!("Subscribing to: {:?}", query.unwrap());
             if write.send(subscription.message.clone()).await.is_err() {
                 println!("Failed to send subscribe message");
                 return; // Exit and attempt to reconnect
