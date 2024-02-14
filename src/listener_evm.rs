@@ -1,6 +1,7 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
+use anyhow::{Context, Result};
 use ethers::{
     contract::EthEvent,
     core::types::{Address, Filter, H160, H256, U256},
@@ -43,23 +44,30 @@ pub async fn init_all_ws(evm_chains: Vec<ChainConfig>, pg_pool: Arc<PgPool>) {
 }
 
 // init_ws connect to the evm network via WebSocket and watch for relevant events
-async fn init_ws(chain_config: ChainConfig, pg_pool: Arc<PgPool>) -> Result<(), Box<dyn std::error::Error>> {
-
-    // Connect to the Ethereum node
-    let provider = Provider::<Ws>::connect_with_reconnects(chain_config.ws_url, 100).await?;
+async fn init_ws(chain_config: ChainConfig, pg_pool: Arc<PgPool>) -> Result<()> {
+    // Connect to the evm node
+    let provider = Provider::<Ws>::connect(&chain_config.ws_url).await
+        .context("Failed to connect to WS")?;
+    //TODO: should early return
     let provider = Arc::new(provider);
+
+    println!("Connected to {:?}", &chain_config.ws_url);
 
     let address = chain_config.axelar_gateway_proxy.parse::<Address>()?;
     let address = ValueOrArray::Value(address);
     // filter for contract_address (2nd indexed topic)
-    let topic2 = H256::from(chain_config.carbon_axelar_gateway.parse::<H160>()?);
-    let event = ContractCallApprovedEvent::new::<_, Provider<Ws>>(Filter::new().topic2(topic2), Arc::clone(&provider)).address(address);
+    let topic2 = H256::from(chain_config.carbon_axelar_gateway.clone().parse::<Address>()?);
+
+    let event = ContractCallApprovedEvent::new::<_, Provider<Ws>>(
+        Filter::new().address(address).topic2(topic2),
+        Arc::clone(&provider)
+    );
     let mut events = event.subscribe().await?.take(5);
 
     while let Some(log) = events.next().await {
         match log {
             Ok(event) => {
-                println!("ContractCallApprovedEvent: {:?}", event);
+                println!("Found ContractCallApprovedEvent for carbon_axelar_gateway ({:?}): {:?}", &chain_config.carbon_axelar_gateway, event);
                 let payload_hash = format!("{:?}", event.payload_hash);
 
                 // check if we should broadcast this event by checking the withdraw_token_acknowledged_events
@@ -80,7 +88,7 @@ async fn init_ws(chain_config: ChainConfig, pg_pool: Arc<PgPool>) -> Result<(), 
                         event
                     }
                     None => {
-                        println!("payload_hash {:?} does not exist or has 0 amounts", &payload_hash);
+                        println!("DbWithdrawTokenAcknowledgedEvent payload_hash {:?} does not exist in DB or has 0 amounts", &payload_hash);
                         continue;
                     }
                 };
@@ -88,6 +96,7 @@ async fn init_ws(chain_config: ChainConfig, pg_pool: Arc<PgPool>) -> Result<(), 
                 // TODO: translate to handle different relay fee denom and amounts
                 if withdraw_event.relay_fee.amount < 10 {
                     // 10 is just an arbitrary number, we should do custom logic to convert price
+                    println!("withdraw_event.relay_fee.amount < 10");
                     continue;
                 }
 

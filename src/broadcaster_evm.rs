@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
-use anyhow::{Context, Result};
 
+use anyhow::{Context, Result};
 use ethers::core::k256::ecdsa::SigningKey;
 use ethers::prelude::*;
 use ethers::signers::LocalWallet;
-use hex::decode as hex_decode;
-use sqlx::{PgPool};
+use ethers::utils::hex::decode;
+use sqlx::PgPool;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio::time::{Duration, interval};
@@ -52,7 +52,7 @@ async fn poll_for_new_events(pool: Arc<PgPool>, channel_tx_map: HashMap<String, 
 }
 
 async fn queue_new_events_for_broadcast(pool: &PgPool, channel_tx_map: HashMap<String,
-    Sender<DbContractCallApprovedEvent>>) -> Result<(), sqlx::Error> {
+    Sender<DbContractCallApprovedEvent>>) -> Result<()> {
     // Implement the logic to check for new events
     println!("Checking for new events...");
     let events: Vec<DbContractCallApprovedEvent> = sqlx::query_as!(
@@ -66,11 +66,9 @@ async fn queue_new_events_for_broadcast(pool: &PgPool, channel_tx_map: HashMap<S
     for event in events {
         println!("New event found: {:?}", event);
         if let Some(sender) = channel_tx_map.get(&event.blockchain) {
-            if sender.send(event).await.is_err() {
-                println!("Failed to queue event for broadcast");
-            }
+            sender.send(event).await.context("Failed to queue event for broadcast")?;
         } else {
-            println!("No channel found for blockchain: {}", event.blockchain);
+            eprintln!("No channel found for blockchain: {}", event.blockchain);
         }
     }
     Ok(())
@@ -186,11 +184,11 @@ async fn broadcast_tx(chain: ChainConfig, event: DbContractCallApprovedEvent, pr
     let executable = chain.carbon_axelar_gateway.parse::<Address>()?;
     let executable = IAxelarExecutable::new(executable, provider.clone());
 
-    let command_id_hex = hex_decode(&event.command_id)
+    let command_id_hex = decode(event.command_id.clone())
         .expect("Failed to decode hex string");
     let command_id_h256 = H256::from_slice(&command_id_hex);
 
-    let payload_bytes = match hex_decode(&event.payload) {
+    let payload_bytes = match decode(&event.payload) {
         Ok(bytes) => Bytes::from(bytes),
         Err(e) => {
             // Handle the error, e.g., log it or return an Err from your function
@@ -210,10 +208,9 @@ async fn broadcast_tx(chain: ChainConfig, event: DbContractCallApprovedEvent, pr
         .await?
         .await?
         .expect("no receipt for execute");
-    println!("execute successfully!");
-    println!("{receipt:?}");
     if receipt.status == Some(U64::from(1)) {
         println!("Transaction successfully executed");
+        println!("Transaction receipt: {receipt:?}");
     } else {
         println!("Transaction failed");
     }
