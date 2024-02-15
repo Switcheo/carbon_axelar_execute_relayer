@@ -4,12 +4,13 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use ethers::{
     contract::EthEvent,
-    core::types::{Address, Filter, H160, H256, U256},
+    core::types::{Address, Filter, H256, U256},
     prelude::*,
     providers::{Provider, Ws},
 };
 use sqlx::PgPool;
 use sqlx::types::BigDecimal;
+use tracing::{error, info, instrument, warn};
 
 use crate::conf::ChainConfig;
 use crate::db::DbWithdrawTokenAcknowledgedEvent;
@@ -29,29 +30,30 @@ pub struct ContractCallApprovedEvent {
     pub source_event_index: U256,
 }
 
-
+#[instrument(name = "listener_evm", skip_all)]
 pub async fn init_all_ws(evm_chains: Vec<ChainConfig>, pg_pool: Arc<PgPool>) {
     for chain in evm_chains {
         let pg_pool_clone = pg_pool.clone();
         let chain_clone = chain.clone();
-        println!("Subscribing to {} on {}", &chain.name, &chain.ws_url);
+        info!("Subscribing to {} on {}", &chain.name, &chain.ws_url);
         tokio::spawn(async move {
             if let Err(e) = init_ws(chain_clone, pg_pool_clone).await {
-                eprintln!("Error initializing WebSocket for {}: {}", &chain.ws_url, e);
+                error!("Error initializing WebSocket for {}: {}", &chain.ws_url, e);
             }
         });
     }
 }
 
 // init_ws connect to the evm network via WebSocket and watch for relevant events
+#[instrument(name = "listener_evm", skip_all, fields(chain = chain_config.name))]
 async fn init_ws(chain_config: ChainConfig, pg_pool: Arc<PgPool>) -> Result<()> {
     // Connect to the evm node
     let provider = Provider::<Ws>::connect(&chain_config.ws_url).await
         .context("Failed to connect to WS")?;
-    //TODO: should early return
+
     let provider = Arc::new(provider);
 
-    println!("Connected to {:?}", &chain_config.ws_url);
+    info!("Connected to {:?}", &chain_config.ws_url);
 
     let address = chain_config.axelar_gateway_proxy.parse::<Address>()?;
     let address = ValueOrArray::Value(address);
@@ -64,10 +66,11 @@ async fn init_ws(chain_config: ChainConfig, pg_pool: Arc<PgPool>) -> Result<()> 
     );
     let mut events = event.subscribe().await?.take(5);
 
+    info!("Starting to watch {:?} for ContractCallApprovedEvent", &chain_config.name);
     while let Some(log) = events.next().await {
         match log {
             Ok(event) => {
-                println!("Found ContractCallApprovedEvent for carbon_axelar_gateway ({:?}): {:?}", &chain_config.carbon_axelar_gateway, event);
+                info!("Received ContractCallApprovedEvent for carbon_axelar_gateway ({:?}): {:?}", &chain_config.carbon_axelar_gateway, event);
                 let payload_hash = format!("{:?}", event.payload_hash);
 
                 // check if we should broadcast this event by checking the withdraw_token_acknowledged_events
@@ -84,11 +87,11 @@ async fn init_ws(chain_config: ChainConfig, pg_pool: Arc<PgPool>) -> Result<()> 
 
                 let withdraw_event = match result {
                     Some(event) => {
-                        println!("Found event: {:?}", event);
+                        info!("Found matching event in DB with payload_hash: {:?}", &payload_hash);
                         event
                     }
                     None => {
-                        println!("DbWithdrawTokenAcknowledgedEvent payload_hash {:?} does not exist in DB or has 0 amounts", &payload_hash);
+                        warn!("DbWithdrawTokenAcknowledgedEvent payload_hash {:?} does not exist in DB or has 0 amounts", &payload_hash);
                         continue;
                     }
                 };
@@ -96,18 +99,18 @@ async fn init_ws(chain_config: ChainConfig, pg_pool: Arc<PgPool>) -> Result<()> 
                 // TODO: translate to handle different relay fee denom and amounts
                 if withdraw_event.relay_fee.amount < 10 {
                     // 10 is just an arbitrary number, we should do custom logic to convert price
-                    println!("withdraw_event.relay_fee.amount < 10");
+                    warn!("withdraw_event.relay_fee.amount < 10");
                     continue;
                 }
 
 
                 // Process the event data as needed
                 // save to db
-                sqlx::query!(
+                match sqlx::query!(
                     "INSERT INTO contract_call_approved_events (command_id, blockchain, broadcast_status, source_chain, source_address, contract_address, payload_hash, source_tx_hash, source_event_index, payload) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
                     format!("{:?}", event.command_id),
                     chain_config.name,
-                    "not_broadcasted",
+                    "pending_broadcast",
                     event.source_chain,
                     event.source_address,
                     format!("{:?}", event.contract_address),
@@ -117,9 +120,12 @@ async fn init_ws(chain_config: ChainConfig, pg_pool: Arc<PgPool>) -> Result<()> 
                     &withdraw_event.payload
                 )
                     .execute(&*pg_pool)
-                    .await?;
+                    .await {
+                    Ok(_result) => info!("Inserted event successfully with payload_hash {}", &payload_hash),
+                    Err(e) => error!("Unable to insert event, err {}:", e),
+                };
             }
-            Err(e) => println!("Error listening for ContractCallApprovedEvent logs: {:?}", e),
+            Err(e) => error!("Error listening for ContractCallApprovedEvent logs: {:?}", e),
         }
     }
 

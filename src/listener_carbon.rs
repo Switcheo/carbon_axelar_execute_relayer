@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+
 use ethers::utils::hex::{decode, encode};
 use ethers::utils::keccak256;
 use futures::lock::Mutex;
@@ -7,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::PgPool;
 use tokio_tungstenite::tungstenite::Message;
+use tracing::{debug, error, info, instrument};
 use url::Url;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -65,9 +67,10 @@ struct Attribute {
     value: String,
 }
 
-
+#[instrument(name = "listener_carbon", skip_all)]
 pub async fn init_ws(url: &String, relayer_deposit_address: &String, pg_pool: Arc<PgPool>) {
-    let url = Url::parse(url).expect("Invalid URL");
+    info!("Initializing WS for Carbon. Watching {:?} on {:?} for events", relayer_deposit_address, url);
+    let url = Url::parse(url).expect(&format!("Invalid WS URL {:?}", url));
 
     // Define multiple subscription messages
     let subscriptions = HashMap::from([
@@ -86,7 +89,7 @@ pub async fn init_ws(url: &String, relayer_deposit_address: &String, pg_pool: Ar
                 let pool = pg_pool.clone();
                 // Spawn an async task to handle the message
                 tokio::spawn(async move {
-                    process_message(msg, pool).await;
+                    process_withdraw_message(msg, pool).await;
                 });
             })),
         }),
@@ -94,17 +97,20 @@ pub async fn init_ws(url: &String, relayer_deposit_address: &String, pg_pool: Ar
 
     let client = crate::ws::JSONWebSocketClient::new(url, subscriptions);
     if let Err(e) = client.connect().await {
-        println!("Error: {:?}", e);
+        error!("Error connecting to client: {:?}", e);
     }
 }
 
-// process_message processes the message
-async fn process_message(msg: String, pg_pool: Arc<PgPool>) {
+// process_withdraw_message processes the WithdrawTokenAcknowledgedEvent
+#[instrument(skip_all)]
+async fn process_withdraw_message(msg: String, pg_pool: Arc<PgPool>) {
+    info!("Processing new WithdrawTokenAcknowledgedEvent from Carbon");
+
     // Process the message and interact with the database
     // Attempt to deserialize the string into WebSocketMessage
     match serde_json::from_str::<WebSocketMessage>(&msg) {
         Ok(query_response) => {
-            println!("Parsed query_response: {:?}", query_response);
+            debug!("Parsed query_response: {:?}", query_response);
             // look for Switcheo.carbon.bridge.WithdrawTokenAcknowledgedEvent
             if let Some(event) = query_response.result.data.value.tx_result.result.events.iter().find(|e| e.event_type == "Switcheo.carbon.bridge.WithdrawTokenAcknowledgedEvent") {
                 let coin = event.attributes.iter().find(|a| a.key == "coin").map(|a| a.value.clone()).unwrap_or_default();
@@ -139,14 +145,14 @@ async fn process_message(msg: String, pg_pool: Arc<PgPool>) {
                     .await;
 
                 if let Err(e) = result {
-                    println!("Failed to insert event data: {}", e);
+                    error!("Failed to insert event data: {}", e);
                 }
             } else {
-                println!("Could not find Switcheo.carbon.bridge.WithdrawTokenAcknowledgedEvent event from response");
+                error!("Could not find Switcheo.carbon.bridge.WithdrawTokenAcknowledgedEvent event from response");
             }
         }
         Err(e) => {
-            println!("Error parsing JSON: {:?}, JSON str:{:?}", e, msg);
+            error!("Error parsing JSON: {:?}, JSON str:{:?}", e, msg);
         }
     }
 }

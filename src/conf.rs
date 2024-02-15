@@ -1,8 +1,9 @@
 use std::path::PathBuf;
 
-use config::{Config, ConfigError, Environment, File};
+use config::{Config, ConfigError, File};
 use dotenvy::dotenv;
 use serde::Deserialize;
+use tracing::info;
 
 #[derive(Clone, Debug, Deserialize)]
 #[allow(unused)]
@@ -34,21 +35,15 @@ pub struct Database {
 
 impl AppConfig {
     pub fn new(config_path: PathBuf) -> Result<Self, ConfigError> {
+        info!("Initializing AppConfig");
         // Load environment variables from .env file
         dotenv().ok();
 
         // Use your config
         let c = Config::builder()
-            // Add in `./Settings.toml`
+            // Add in `./config.toml`
             .add_source(File::from(config_path))
-            // Add in settings from the environment (with a prefix of CAE)
-            // Eg.. `CAE_DATABASE_URL=postgres://...` would set the `database_url` key
-            .add_source(Environment::with_prefix("CAE"))
             .build()?;
-
-        // Now that we're done, let's access our configuration
-        // println!("debug: {:?}", c.get_bool("debug"));
-        println!("database: {:?}", c.get::<String>("database.pg_url"));
 
         // You can deserialize (and thus freeze) the entire configuration as
         c.try_deserialize()

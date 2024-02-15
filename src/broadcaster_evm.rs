@@ -2,15 +2,17 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Error, Result};
 use ethers::core::k256::ecdsa::SigningKey;
 use ethers::prelude::*;
 use ethers::signers::LocalWallet;
 use ethers::utils::hex::decode;
 use sqlx::PgPool;
+use sqlx::postgres::PgQueryResult;
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::{Duration, interval};
+use tracing::{debug, error, info, instrument};
 
 use crate::conf::ChainConfig;
 use crate::db::DbContractCallApprovedEvent;
@@ -30,7 +32,7 @@ abigen!(
     ]"#
 );
 
-
+#[instrument(name = "broadcaster_evm", skip_all)]
 pub async fn init_all(evm_chains: Vec<ChainConfig>, pg_pool: Arc<PgPool>) {
     let evm_chains_clone = evm_chains.clone();
     // initialize signature providers for each chain
@@ -41,34 +43,43 @@ pub async fn init_all(evm_chains: Vec<ChainConfig>, pg_pool: Arc<PgPool>) {
     poll_for_new_events(pg_pool_clone, channel_tx_map).await;
 }
 
-
+// Polls for new contract_call_approved_events saved in the DB that can be executed and enqueues them into the broadcast channel
+#[instrument(name = "poll_for_new_events", skip_all)]
 async fn poll_for_new_events(pool: Arc<PgPool>, channel_tx_map: HashMap<String, Sender<DbContractCallApprovedEvent>>) {
-    println!("Watching for events to broadcast");
+    info!("Watching for events to broadcast");
     let mut interval = interval(Duration::from_secs(5));
     loop {
         interval.tick().await;
-        let _ = queue_new_events_for_broadcast(&pool, channel_tx_map.clone()).await;
+        if let Err(e) = queue_new_events_for_broadcast(&pool, channel_tx_map.clone()).await {
+            error!("Failed to queue new events for broadcast: {}", e);
+        }
     }
 }
 
+// Checks the DB for events that can be executed and enqueues them into the broadcast channel
 async fn queue_new_events_for_broadcast(pool: &PgPool, channel_tx_map: HashMap<String,
     Sender<DbContractCallApprovedEvent>>) -> Result<()> {
     // Implement the logic to check for new events
-    println!("Checking for new events...");
+    debug!("Checking for new events...");
     let events: Vec<DbContractCallApprovedEvent> = sqlx::query_as!(
         DbContractCallApprovedEvent,
         "SELECT * FROM contract_call_approved_events WHERE broadcast_status = $1",
-        "not_broadcasted"
+        "pending_broadcast"
     )
         .fetch_all(pool)
         .await?;
 
     for event in events {
-        println!("New event found: {:?}", event);
-        if let Some(sender) = channel_tx_map.get(&event.blockchain) {
-            sender.send(event).await.context("Failed to queue event for broadcast")?;
-        } else {
-            eprintln!("No channel found for blockchain: {}", event.blockchain);
+        info!("DB event found: {:?}", event);
+        match channel_tx_map.get(&event.blockchain) {
+            Some(sender) => {
+                if let Err(e) = sender.send(event.clone()).await {
+                    error!("Failed to send to channel {:?}, err: {:?}", &event.blockchain, e);
+                }
+            }
+            None => {
+                error!("No channel found for blockchain: {:?}", event.blockchain);
+            }
         }
     }
     Ok(())
@@ -78,88 +89,95 @@ async fn init_channels(evm_chains: Vec<ChainConfig>, pg_pool: Arc<PgPool>) -> Ha
     let mut channels = HashMap::new();
     // Initialize providers and channels for each chain
     for chain in evm_chains {
+        info!("Initializing receive_and_broadcast for {:?}", &chain.name);
         // init channel
-        let (tx, mut rx) = mpsc::channel::<DbContractCallApprovedEvent>(100); // Adjust the size based on expected load
+        let (tx, rx) = mpsc::channel::<DbContractCallApprovedEvent>(100); // Adjust the size based on expected load
         channels.insert(chain.name.clone(), tx);
         let pg_pool = pg_pool.clone();
 
         // spawn receiving logic
         tokio::spawn(async move {
-            let provider = match init_provider(chain.clone()).await {
-                Ok(provider) => provider,
-                Err(e) => {
-                    eprintln!("Error initializing provider for {}: {}", chain.name, e);
-                    return
-                }
-            };
-            let axelar_gateway = match chain.axelar_gateway_proxy.parse::<Address>() {
-                Ok(address) => address,
-                Err(e) => {
-                    // Handle the error, e.g., log it or return from the block
-                    eprintln!("Error parsing address: {}", e);
-                    return; // Exit the async block early
-                }
-            };
-            let axelar_gateway = IAxelarGateway::new(axelar_gateway, provider.clone());
-
-            while let Some(event) = rx.recv().await {
-                let event_clone = event.clone();
-                let command_id = H256::from_str(&event.command_id).expect("Failed to parse command_id");
-                let contract_address = Address::from_str(&event.contract_address).expect("Failed to parse contract_address");
-                let payload_hash = H256::from_str(&event.payload_hash).expect("Failed to parse payload_hash");
-
-                // Query blockchain to check if the contract call has already been approved
-                let is_executed = axelar_gateway.is_contract_call_approved(
-                    command_id.0,
-                    event.source_chain,
-                    event.source_address,
-                    contract_address,
-                    payload_hash.0,
-                )
-                    .call()
-                    .await
-                    .unwrap_or(false);
-                if is_executed {
-                    // If already executed, mark db event as executed
-                    let _ = sqlx::query!(
-                        "UPDATE contract_call_approved_events SET broadcast_status = $1 WHERE id = $2",
-                        "executed",
-                        event.id
-                    )
-                        .execute(pg_pool.as_ref())
-                        .await;
-                    println!("Event already executed: {:?}", event.id);
-                }
-
-                let mut is_broadcast = false;
-
-                // broadcast
-                match broadcast_tx(chain.clone(), event_clone, provider.clone()).await {
-                    Ok(_res) => {
-                        is_broadcast = true;
-                    }
-                    Err(e) => {
-                        eprintln!("Broadcast failed with error: {:?}", e)
-                    }
-                };
-
-                if !is_broadcast {
-                    return;
-                }
-
-                if let Err(e) = sqlx::query!(
-                            "UPDATE contract_call_approved_events SET broadcast_status = $1 WHERE id = $2",
-                            "broadcasting",
-                            event.id
-                        )
-                    .execute(pg_pool.as_ref())
-                    .await {
-                    eprintln!("UPDATE failed with error: {:?}", e);
-                }
+            if let Err(e) = receive_and_broadcast(chain, rx, pg_pool).await {
+                // Handle or log the error e
+                error!("Error in receive_and_broadcast: {:?}", e);
             }
         });
     }
     channels
+}
+
+
+#[instrument(name = "broadcaster_evm::receive_and_broadcast", skip_all, fields(chain = chain.name))]
+async fn receive_and_broadcast(chain: ChainConfig, mut rx: Receiver<DbContractCallApprovedEvent>, pg_pool: Arc<PgPool>) -> Result<()> {
+    let provider = init_provider(chain.clone()).await?;
+    let axelar_gateway = chain.axelar_gateway_proxy.parse::<Address>()?;
+    let axelar_gateway = IAxelarGateway::new(axelar_gateway, provider.clone());
+
+    Ok(while let Some(event) = rx.recv().await {
+        let command_id = H256::from_str(&event.command_id).expect("Failed to parse command_id");
+        let contract_address = Address::from_str(&event.contract_address).expect("Failed to parse contract_address");
+        let payload_hash = H256::from_str(&event.payload_hash).expect("Failed to parse payload_hash");
+
+        // Query blockchain to check if the contract call has already been approved
+        let is_executed = axelar_gateway.is_contract_call_approved(
+            command_id.0,
+            event.source_chain.clone(),
+            event.source_address.clone(),
+            contract_address,
+            payload_hash.0,
+        )
+            .call()
+            .await
+            .unwrap_or(false);
+        if is_executed {
+            // If already executed, mark db event as executed
+            info!("Skipping event as it is already executed: {:?}", &event.id);
+            // update executed
+            update_executed(&pg_pool, &event).await?;
+            continue;
+        }
+
+        // Double check db to make sure it is still pending_broadcast
+        let exists = sqlx::query!(
+                "SELECT EXISTS(SELECT 1 FROM contract_call_approved_events WHERE id = $1 AND broadcast_status = 'pending_broadcast')",
+                event.id.clone()
+            )
+            .fetch_one(pg_pool.as_ref())
+            .await?
+            .exists.unwrap_or(false);
+        if !exists {
+            info!("Skipping event as it is not pending: {:?}", &event.id);
+            continue;
+        }
+
+        // Update to broadcasting
+        if let Err(e) = sqlx::query!(
+                            "UPDATE contract_call_approved_events SET broadcast_status = $1 WHERE id = $2",
+                            "broadcasting",
+                            event.id.clone()
+                        )
+            .execute(pg_pool.as_ref())
+            .await {
+            error!("UPDATE failed with error: {:?}", e);
+            continue;
+        }
+
+        // broadcast
+        broadcast_tx(chain.clone(), event.clone(), provider.clone()).await?;
+
+        // if no errors, we can update
+        update_executed(&pg_pool, &event).await?;
+    })
+}
+
+async fn update_executed(pg_pool: &Arc<PgPool>, event: &DbContractCallApprovedEvent) -> std::result::Result<PgQueryResult, Error> {
+    sqlx::query!(
+                        "UPDATE contract_call_approved_events SET broadcast_status = $1 WHERE id = $2",
+                        "executed",
+                        &event.id
+                    )
+        .execute(pg_pool.as_ref())
+        .await.context("Failed to update contract_call_approved_events")
 }
 
 async fn init_provider(chain: ChainConfig) -> Result<Arc<SignerMiddleware<Provider<Http>, Wallet<SigningKey>>>> {
@@ -179,8 +197,8 @@ async fn init_provider(chain: ChainConfig) -> Result<Arc<SignerMiddleware<Provid
     Ok(provider)
 }
 
-async fn broadcast_tx(chain: ChainConfig, event: DbContractCallApprovedEvent, provider: Arc<SignerMiddleware<Provider<Http>, Wallet<SigningKey>>>) -> Result<(), Box<dyn std::error::Error>> {
-    // call execute(bytes32,string,string,bytes)()
+#[instrument(skip_all, fields(payload_hash = event.payload_hash))]
+async fn broadcast_tx(chain: ChainConfig, event: DbContractCallApprovedEvent, provider: Arc<SignerMiddleware<Provider<Http>, Wallet<SigningKey>>>) -> Result<()> {
     let executable = chain.carbon_axelar_gateway.parse::<Address>()?;
     let executable = IAxelarExecutable::new(executable, provider.clone());
 
@@ -188,31 +206,30 @@ async fn broadcast_tx(chain: ChainConfig, event: DbContractCallApprovedEvent, pr
         .expect("Failed to decode hex string");
     let command_id_h256 = H256::from_slice(&command_id_hex);
 
-    let payload_bytes = match decode(&event.payload) {
-        Ok(bytes) => Bytes::from(bytes),
-        Err(e) => {
-            // Handle the error, e.g., log it or return an Err from your function
-            eprintln!("Failed to decode payload_hash: {:?}", e);
-            return Err(Box::new(e)); // Adjust error handling as needed
-        }
-    };
+    let payload_bytes = decode(&event.payload)?;
 
-    let receipt = executable
+    // Send the transaction
+    let receipt: TransactionReceipt = executable
         .execute(
             command_id_h256.0,
             event.source_chain,
             event.source_address,
-            payload_bytes,
+            Bytes::from(payload_bytes),
         )
         .send()
-        .await?
-        .await?
-        .expect("no receipt for execute");
+        .await
+        .context("Failed to send transaction")?
+        .await
+        .context("Failed to await transaction receipt")?
+        .ok_or_else(|| anyhow::anyhow!("Transaction receipt not found, the transaction might not have been mined yet"))?;
+
+    // Check the transaction status
     if receipt.status == Some(U64::from(1)) {
-        println!("Transaction successfully executed");
-        println!("Transaction receipt: {receipt:?}");
+        info!("Transaction for payload_hash {} successfully executed. tx_hash: {:?}", &event.payload_hash, &receipt.transaction_hash);
+        debug!("Transaction receipt: {receipt:?}");
     } else {
-        println!("Transaction failed");
+        // Consider using a custom error type or anyhow::Error for a generic error
+        anyhow::bail!("Transaction failed with receipt: {receipt:?}");
     }
 
     Ok(())

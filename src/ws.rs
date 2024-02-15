@@ -8,9 +8,8 @@ use futures::stream::StreamExt;
 use serde_json::Value;
 use tokio::time::sleep;
 use tokio_tungstenite::{connect_async, tungstenite::Error as TungsteniteError, tungstenite::protocol::Message};
+use tracing::{error, warn, info, debug};
 use url::Url;
-
-// type MessageHandler = Arc<Mutex<dyn FnMut(String) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>>;
 
 type MessageHandler = Arc<Mutex<dyn FnMut(String) + Send>>;
 
@@ -31,18 +30,19 @@ impl JSONWebSocketClient {
     }
 
     pub async fn connect(&self) -> tokio_tungstenite::tungstenite::Result<()> {
+        info!("Connecting to WS client");
         loop {
             match connect_async(&self.url).await {
                 Ok((ws_stream, _)) => {
-                    println!("WebSocket connected to {:?}", self.url.to_string());
+                    info!("WebSocket connected to {:?}", self.url.to_string());
                     let (write, read) = ws_stream.split();
                     self.handle_connection(write, read).await;
                 }
-                Err(e) => println!("Failed to connect: {:?}", e),
+                Err(e) => error!("Failed to connect: {:?}", e),
             }
 
-            println!("Attempting to reconnect in 5 seconds...");
-            sleep(Duration::from_secs(5)).await;
+            warn!("Attempting to reconnect in 10 seconds...");
+            sleep(Duration::from_secs(10)).await;
         }
     }
 
@@ -51,9 +51,9 @@ impl JSONWebSocketClient {
         // Subscribe to each message using the HashMap
         for subscription in self.subscriptions.values() {
             let query = subscription.message.clone().into_text();
-            println!("Subscribing to: {:?}", query.unwrap());
+            info!("Subscribing to: {:?}", query.unwrap());
             if write.send(subscription.message.clone()).await.is_err() {
-                println!("Failed to send subscribe message");
+                error!("Failed to send subscribe message");
                 return; // Exit and attempt to reconnect
             }
         }
@@ -68,7 +68,7 @@ impl JSONWebSocketClient {
         let msg = match message {
             Ok(msg) => msg,
             Err(e) => {
-                println!("Error reading message: {:?}", e);
+                error!("Error reading message: {:?}", e);
                 return;
             }
         };
@@ -76,7 +76,7 @@ impl JSONWebSocketClient {
         let text = match msg.into_text() {
             Ok(text) => text,
             Err(e) => {
-                println!("Failed to convert message to text: {:?}", e);
+                error!("Failed to convert message to text: {:?}", e);
                 return;
             }
         };
@@ -84,14 +84,20 @@ impl JSONWebSocketClient {
         let json_msg = match serde_json::from_str::<Value>(&text) {
             Ok(json) => json,
             Err(e) => {
-                println!("Failed to parse text to JSON: {:?}, text: {:?}", e, text);
+                if text.is_empty() {
+                    // sometimes there will be empty messages sent from ws, not sure why
+                    debug!("Failed to parse text to JSON: {:?}, text is empty", e);
+                } else {
+                    // only log as error if empty
+                    error!("Failed to parse text to JSON: {:?}, text: {:?}", e, text);
+                }
                 return;
             }
         };
 
         // Check if the `result` object is not empty
         if json_msg["result"].as_object().map_or(true, |obj| obj.is_empty()) {
-            println!("Ignoring message with empty result: {:?}", json_msg);
+            debug!("Ignoring message with empty result: {:?}", json_msg);
             return;
         }
 
@@ -104,10 +110,10 @@ impl JSONWebSocketClient {
                     (*handler)(text.clone()); // Invoke the handler
                 });
             } else {
-                println!("No subscription found for id: {}", id);
+                info!("No subscription found for id: {}", id);
             }
         } else {
-            println!("Message does not contain an id field");
+            info!("Message does not contain an id field");
         }
     }
 }
