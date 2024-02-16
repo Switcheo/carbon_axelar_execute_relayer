@@ -39,13 +39,12 @@ impl AppConfig {
         // Load environment variables from .env file
         dotenv().ok();
 
-        // Use your config
+        // Use the config file
         let c = Config::builder()
-            // Add in `./config.toml`
             .add_source(File::from(config_path))
             .build()?;
 
-        // You can deserialize (and thus freeze) the entire configuration as
+        // Deserialize (and thus freeze) the entire configuration
         c.try_deserialize()
     }
 }

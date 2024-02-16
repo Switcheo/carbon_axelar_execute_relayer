@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+use anyhow::{Context, Result};
 use futures::lock::Mutex;
 use futures::SinkExt;
 use futures::stream::StreamExt;
@@ -60,60 +61,45 @@ impl JSONWebSocketClient {
 
         // Listen for messages and dispatch to handlers based on the id
         while let Some(message) = read.next().await {
-            self.handle_message(message).await;
+            if let Err(e) = self.handle_message(message).await {
+                error!("Failed to handle message: {}", e);
+            }
         }
     }
 
-    async fn handle_message(&self, message: Result<Message, TungsteniteError>) {
-        let msg = match message {
-            Ok(msg) => msg,
-            Err(e) => {
-                error!("Error reading message: {:?}", e);
-                return;
-            }
-        };
+    async fn handle_message(&self, message: Result<Message, TungsteniteError>) -> Result<()> {
+        let msg = message.context("Error reading message")?;
 
-        let text = match msg.into_text() {
-            Ok(text) => text,
-            Err(e) => {
-                error!("Failed to convert message to text: {:?}", e);
-                return;
-            }
-        };
+        let text = msg.into_text().context("Failed to convert message to text")?;
 
-        let json_msg = match serde_json::from_str::<Value>(&text) {
-            Ok(json) => json,
-            Err(e) => {
-                if text.is_empty() {
-                    // sometimes there will be empty messages sent from ws, not sure why
-                    debug!("Failed to parse text to JSON: {:?}, text is empty", e);
-                } else {
-                    // only log as error if empty
-                    error!("Failed to parse text to JSON: {:?}, text: {:?}", e, text);
-                }
-                return;
-            }
-        };
+        if text.is_empty() {
+            // Log and return early for empty messages, not considered an error
+            debug!("Received empty message, ignoring.");
+            return Ok(());
+        }
 
-        // Check if the `result` object is not empty
+        let json_msg: Value = serde_json::from_str(&text)
+            .with_context(|| format!("Failed to parse text to JSON, text: {:?}", text))?;
+
         if json_msg["result"].as_object().map_or(true, |obj| obj.is_empty()) {
             debug!("Ignoring message with empty result: {:?}", json_msg);
-            return;
+            return Ok(());
         }
 
         if let Some(id) = json_msg["id"].as_str() {
             if let Some(subscription) = self.subscriptions.get(id) {
                 let handler = subscription.handler.clone(); // Clone Arc to share ownership
-                // let msg_clone = ; // Clone the message if necessary
                 tokio::spawn(async move {
                     let mut handler = handler.lock().await; // Lock within the spawned task
-                    (*handler)(text.clone()); // Invoke the handler
+                    (*handler)(text); // Invoke the handler
                 });
             } else {
-                info!("No subscription found for id: {}", id);
+                error!("No subscription found for id: {}", id);
             }
         } else {
-            info!("Message does not contain an id field");
+            error!("Message does not contain an id field");
         }
+
+        Ok(())
     }
 }

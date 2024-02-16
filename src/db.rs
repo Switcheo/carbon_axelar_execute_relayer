@@ -35,10 +35,10 @@ pub struct DbContractCallApprovedEvent {
 pub struct Coin {
     pub denom: String,
     #[serde(deserialize_with = "deserialize_amount")]
-    pub amount: u64, // Now directly as u64
+    pub amount: u64,
 }
 
-// Custom deserializer for the amount field
+// Custom deserializer for the amount field to turn string into u64
 fn deserialize_amount<'de, D>(deserializer: D) -> Result<u64, D::Error>
     where
         D: Deserializer<'de>,

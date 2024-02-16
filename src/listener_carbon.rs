@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use ethers::utils::hex::{decode, encode};
+use ethers::utils::hex::{decode, encode_prefixed};
 use ethers::utils::keccak256;
 use futures::lock::Mutex;
 use serde::{Deserialize, Serialize};
@@ -127,7 +127,7 @@ async fn process_withdraw_message(msg: String, pg_pool: Arc<PgPool>) {
                 let payload_bytes = decode(strip_quotes(&payload.clone()))
                     .expect("Decoding failed");
                 let payload_hash = keccak256(&payload_bytes);
-                let payload_hash = encode(payload_hash);
+                let payload_hash = encode_prefixed(payload_hash);
 
                 // save event details to db
                 let result = sqlx::query!(
@@ -138,14 +138,15 @@ async fn process_withdraw_message(msg: String, pg_pool: Arc<PgPool>) {
                         relay_fee,
                         strip_quotes(&relayer_deposit_address),
                         strip_quotes(&sender),
-                        payload_hash,
-                        strip_quotes(&payload),
+                        &payload_hash,
+                        encode_prefixed(&payload_bytes),
                     )
                     .execute(&*pg_pool)
                     .await;
 
-                if let Err(e) = result {
-                    error!("Failed to insert event data: {}", e);
+                match result {
+                    Ok(_res) => info!("Saved withdraw_token_acknowledged_event with payload_hash {:?}", &payload_hash),
+                    Err(e) => error!("Failed to insert event data: {}", e)
                 }
             } else {
                 error!("Could not find Switcheo.carbon.bridge.WithdrawTokenAcknowledgedEvent event from response");
