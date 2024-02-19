@@ -119,7 +119,7 @@ async fn receive_and_broadcast(chain: ChainConfig, mut rx: Receiver<DbContractCa
         let payload_hash = H256::from_str(&event.payload_hash).expect("Failed to parse payload_hash");
 
         // Query blockchain to check if the contract call has already been approved
-        let is_executed = axelar_gateway.is_contract_call_approved(
+        let is_approved = axelar_gateway.is_contract_call_approved(
             command_id.0,
             event.source_chain.clone(),
             event.source_address.clone(),
@@ -129,9 +129,9 @@ async fn receive_and_broadcast(chain: ChainConfig, mut rx: Receiver<DbContractCa
             .call()
             .await
             .unwrap_or(false);
-        if is_executed {
+        if !is_approved {
             // If already executed, mark db event as executed
-            info!("Skipping event as it is already executed: {:?}", &event.id);
+            info!("Skipping event as it is not approved and assumed to be executed, payload_hash: {:?}", &event.payload_hash);
             // update executed
             update_executed(&pg_pool, &event).await?;
             continue;
