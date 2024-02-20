@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use futures::lock::Mutex;
 use futures::SinkExt;
 use futures::stream::StreamExt;
-use serde_json::Value;
+use serde_json::{json, Value};
 use tokio::time::sleep;
 use tokio_tungstenite::{connect_async, tungstenite::Error as TungsteniteError, tungstenite::protocol::Message};
 use tracing::{error, warn, info, debug};
@@ -26,8 +26,8 @@ pub struct JSONWebSocketClient {
 
 
 impl JSONWebSocketClient {
-    pub fn new(url: Url, subscriptions: HashMap<String, Subscription>) -> Self {
-        Self { url, subscriptions }
+    pub fn new(url: Url) -> Self {
+        Self { url, subscriptions: HashMap::new() }
     }
 
     pub async fn connect(&self) -> tokio_tungstenite::tungstenite::Result<()> {
@@ -47,6 +47,21 @@ impl JSONWebSocketClient {
         }
     }
 
+    pub fn add_cosmos_subscription(&mut self, id: String, query: String, message_handler: MessageHandler) {
+        self.subscriptions.insert(id.clone(), Subscription {
+            message: Message::Text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "method": "subscribe",
+                    "id": id.clone(),
+                    "params": {
+                        "query": query,
+                    }
+                }).to_string(),
+            ),
+            handler: message_handler,
+        });
+    }
 
     async fn handle_connection(&self, mut write: impl SinkExt<Message> + Unpin, mut read: impl StreamExt<Item=tokio_tungstenite::tungstenite::Result<Message>> + Unpin) {
         // Subscribe to each message using the HashMap
@@ -103,3 +118,4 @@ impl JSONWebSocketClient {
         Ok(())
     }
 }
+

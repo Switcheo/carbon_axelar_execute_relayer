@@ -13,7 +13,7 @@ use sqlx::types::BigDecimal;
 use tracing::{error, info, instrument, warn};
 
 use crate::conf::ChainConfig;
-use crate::db::DbWithdrawTokenAcknowledgedEvent;
+use crate::db::{DbPayloadAcknowledgedEvent, DbWithdrawTokenAcknowledgedEvent};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, EthEvent)]
 #[ethevent(name = "ContractCallApproved", abi = "ContractCallApproved(bytes32,string,string,address,bytes32,bytes32,uint256)")]
@@ -68,39 +68,42 @@ async fn init_ws(chain_config: ChainConfig, pg_pool: Arc<PgPool>) -> Result<()> 
 
     info!("Starting to watch {:?} for ContractCallApprovedEvent", &chain_config.name);
     while let Some(log) = events.next().await {
+        // TODO: extract to separate thread?
         match log {
             Ok(event) => {
                 info!("Received ContractCallApprovedEvent for carbon_axelar_gateway ({:?}): {:?}", &chain_config.carbon_axelar_gateway, event);
                 let payload_hash = format!("{:?}", event.payload_hash);
 
-                // check if we should broadcast this event by checking the withdraw_token_acknowledged_events
-                let result = sqlx::query_as::<_, DbWithdrawTokenAcknowledgedEvent>(
-                    r#"
-                        SELECT * FROM withdraw_token_acknowledged_events
-                        WHERE payload_hash = $1
-                        AND (coin->>'amount')::numeric > 0
-                        AND (relay_fee->>'amount')::numeric > 0
-                        "#,
-                )
-                    .bind(&payload_hash)
-                    .fetch_optional(&*pg_pool).await?;
+                // We only want to save payload_acknowledged_events for broadcasting in the following conditions:
+                // - it is saved in payload_acknowledged_events which means that it is whitelisted for free tx
+                // - there is a corresponding withdraw_token_acknowledged_event with the same payload_hash, with valid amounts
 
-                let withdraw_event = match result {
-                    Some(event) => {
-                        info!("Found matching event in DB with payload_hash: {:?}", &payload_hash);
-                        event
+                let payload_acknowledged_result = get_payload_acknowledged_event(&pg_pool, &payload_hash).await;
+                let payload_acknowledged_event = match payload_acknowledged_result {
+                    Ok(event) => {
+                        match event {
+                            Some(event) => {
+                                info!("Found matching event payload_acknowledged_events in DB with payload_hash: {:?}", &payload_hash);
+                                event
+                            },
+                            None => {
+                                warn!("Skipping as DbPayloadAcknowledgedEvent payload_hash {:?} does not exist in DB", &payload_hash);
+                                continue
+                            }
+                        }
                     }
-                    None => {
-                        warn!("DbWithdrawTokenAcknowledgedEvent payload_hash {:?} does not exist in DB or has 0 amounts", &payload_hash);
-                        continue;
+                    Err(e) => {
+                        error!("Error while querying DB for DbPayloadAcknowledgedEvent, error: {:?}", &e);
+                        continue
                     }
                 };
 
-                // TODO: translate to handle different relay fee denom and amounts
-                if withdraw_event.relay_fee.amount < 10 {
-                    // 10 is just an arbitrary number, we should do custom logic to convert price
-                    warn!("withdraw_event.relay_fee.amount < 10");
-                    continue;
+                // if it is a token withdraw, we need to check withdraw_token_acknowledged_events to validate the fee
+                if payload_acknowledged_event.payload_type == BigDecimal::from(5) {
+                    if let Err(e) = validate_withdraw(&pg_pool, &payload_hash).await {
+                        error!("Skipping withdrawal payload_hash {:?} due to error: {:?}", &payload_hash, e);
+                        continue
+                    }
                 }
 
 
@@ -117,7 +120,7 @@ async fn init_ws(chain_config: ChainConfig, pg_pool: Arc<PgPool>) -> Result<()> 
                     &payload_hash,
                     format!("{:?}", event.source_tx_hash),
                     BigDecimal::from_str(&event.source_event_index.to_string()).unwrap(),
-                    &withdraw_event.payload
+                    &payload_acknowledged_event.payload
                 )
                     .execute(&*pg_pool)
                     .await {
@@ -129,5 +132,47 @@ async fn init_ws(chain_config: ChainConfig, pg_pool: Arc<PgPool>) -> Result<()> 
         }
     }
 
+    Ok(())
+}
+
+
+async fn get_payload_acknowledged_event(pg_pool: &Arc<PgPool>, payload_hash: &String) -> Result<Option<DbPayloadAcknowledgedEvent>> {
+    // Check if we should broadcast this event by checking the withdraw_token_acknowledged_events
+    sqlx::query_as::<_, DbPayloadAcknowledgedEvent>(
+        "SELECT * FROM payload_acknowledged_events WHERE payload_hash = $1",
+    )
+        .bind(&payload_hash)
+        .fetch_optional(pg_pool.as_ref()).await.context("sql query error for payload_acknowledged_events")
+}
+
+async fn validate_withdraw(pg_pool: &Arc<PgPool>, payload_hash: &String) -> Result<()> {
+    // Check if we should broadcast this event by checking the withdraw_token_acknowledged_events
+    let result = sqlx::query_as::<_, DbWithdrawTokenAcknowledgedEvent>(
+        r#"
+                        SELECT * FROM withdraw_token_acknowledged_events
+                        WHERE payload_hash = $1
+                        AND (coin->>'amount')::numeric > 0
+                        AND (relay_fee->>'amount')::numeric > 0
+                        "#,
+    )
+        .bind(&payload_hash)
+        .fetch_optional(pg_pool.as_ref()).await?;
+
+    let withdraw_event = match result {
+        Some(event) => {
+            info!("Found matching withdraw_token_acknowledged_events in DB with payload_hash: {:?}", &payload_hash);
+            event
+        }
+        None => {
+            anyhow::bail!("Skipping as DbWithdrawTokenAcknowledgedEvent payload_hash {:?} does not exist in DB or has 0 amounts", &payload_hash);
+        }
+    };
+
+    // TODO: translate to handle different relay fee denom and amounts
+    if withdraw_event.relay_fee.amount < 10 {
+        // 10 is just an arbitrary number, we should do custom logic to convert price
+        warn!("withdraw_event.relay_fee.amount < 10");
+        anyhow::bail!("withdraw_event.relay_fee.amount < 10");
+    }
     Ok(())
 }

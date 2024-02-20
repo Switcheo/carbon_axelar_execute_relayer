@@ -1,15 +1,16 @@
-use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use ethers::utils::hex::{decode, encode_prefixed};
 use ethers::utils::keccak256;
 use futures::lock::Mutex;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use sqlx::PgPool;
-use tokio_tungstenite::tungstenite::Message;
+use sqlx::types::BigDecimal;
 use tracing::{debug, error, info, instrument};
 use url::Url;
+
+use crate::ws::{JSONWebSocketClient};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct WebSocketMessage {
@@ -72,30 +73,35 @@ pub async fn init_ws(url: &String, relayer_deposit_address: &String, pg_pool: Ar
     info!("Initializing WS for Carbon. Watching {:?} on {:?} for events", relayer_deposit_address, url);
     let url = Url::parse(url).expect(&format!("Invalid WS URL {:?}", url));
 
-    // Define multiple subscription messages
-    let subscriptions = HashMap::from([
-        ("1".to_string(), crate::ws::Subscription {
-            message: Message::Text(
-                json!({
-                    "jsonrpc": "2.0",
-                    "method": "subscribe",
-                    "id": "1",
-                    "params": {
-                        "query": format!("Switcheo.carbon.bridge.WithdrawTokenAcknowledgedEvent.relayer_deposit_address CONTAINS '{}'", relayer_deposit_address)
-                    }
-                }).to_string(),
-            ),
-            handler: Arc::new(Mutex::new(move |msg: String| {
-                let pool = pg_pool.clone();
-                // Spawn an async task to handle the message
-                tokio::spawn(async move {
-                    process_withdraw_message(msg, pool).await;
-                });
-            })),
-        }),
-    ]);
+    // create new client
+    let mut client = JSONWebSocketClient::new(url);
 
-    let client = crate::ws::JSONWebSocketClient::new(url, subscriptions);
+    // add WithdrawTokenAcknowledgedEvent subscription
+    let pool = pg_pool.clone();
+    client.add_cosmos_subscription(
+        "1".to_string(),
+        format!("Switcheo.carbon.bridge.WithdrawTokenAcknowledgedEvent.relayer_deposit_address CONTAINS '{}'", relayer_deposit_address),
+        Arc::new(Mutex::new(move |msg: String| {
+            // Spawn an async task to handle the message
+            let pool = pool.clone();
+            tokio::spawn(async move {
+                process_withdraw_message(msg, pool.clone()).await;
+            });
+        })));
+    // add PayloadAcknowledgedEvent subscription
+    let pool = pg_pool.clone();
+    client.add_cosmos_subscription(
+        "2".to_string(),
+        format!("Switcheo.carbon.bridge.PayloadAcknowledgedEvent.nonce EXISTS"),
+        Arc::new(Mutex::new(move |msg: String| {
+            let pool = pool.clone();
+            // Spawn an async task to handle the message
+            tokio::spawn(async move {
+                process_payload_acknowledged_message(msg, pool.clone()).await;
+            });
+        })));
+
+    // connect to WS
     if let Err(e) = client.connect().await {
         error!("Error connecting to client: {:?}", e);
     }
@@ -158,6 +164,62 @@ async fn process_withdraw_message(msg: String, pg_pool: Arc<PgPool>) {
     }
 }
 
-fn strip_quotes(input: &str) -> String {
-    input.trim_matches('"').to_string()
+// process_payload_acknowledged_message processes the PayloadAcknowledgedEvent
+#[instrument(skip_all)]
+async fn process_payload_acknowledged_message(msg: String, pg_pool: Arc<PgPool>) {
+    info!("Processing new PayloadAcknowledgedEvent from Carbon");
+
+    // Process the message and interact with the database
+    // Attempt to deserialize the string into WebSocketMessage
+    match serde_json::from_str::<WebSocketMessage>(&msg) {
+        Ok(query_response) => {
+            debug!("Parsed query_response: {:?}", query_response);
+            // look for Switcheo.carbon.bridge.PayloadAcknowledgedEvent
+            if let Some(event) = query_response.result.data.value.tx_result.result.events.iter().find(|e| e.event_type == "Switcheo.carbon.bridge.PayloadAcknowledgedEvent") {
+                let payload_type = event.attributes.iter().find(|a| a.key == "payload_type").map(|a| a.value.clone()).unwrap_or_default();
+                let payload_type = BigDecimal::from_str(strip_quotes(&payload_type))
+                    .expect("Failed to parse payload_type into BigDecimal");
+
+                // TODO: check payload type with list of payload types that we want
+
+                let nonce = event.attributes.iter().find(|a| a.key == "nonce").map(|a| a.value.clone()).unwrap_or_default();
+                let nonce = BigDecimal::from_str(strip_quotes(&nonce))
+                    .expect("Failed to parse nonce into BigDecimal");
+                let payload_encoding = event.attributes.iter().find(|a| a.key == "payload_encoding").map(|a| a.value.clone()).unwrap_or_default();
+                let payload = event.attributes.iter().find(|a| a.key == "payload").map(|a| a.value.clone()).unwrap_or_default();
+
+                // get payload_hash
+                let payload_bytes = decode(strip_quotes(&payload.clone()))
+                    .expect("Decoding failed");
+                let payload_hash = keccak256(&payload_bytes);
+                let payload_hash = encode_prefixed(payload_hash);
+
+                // save event details to db
+                let result = sqlx::query!(
+                        "INSERT INTO payload_acknowledged_events (payload_type, nonce, payload_hash, payload, payload_encoding) VALUES ($1, $2, $3, $4, $5)",
+                        payload_type,
+                        nonce,
+                        &payload_hash,
+                        encode_prefixed(&payload_bytes),
+                        strip_quotes(&payload_encoding),
+                    )
+                    .execute(&*pg_pool)
+                    .await;
+
+                match result {
+                    Ok(_res) => info!("Saved PayloadAcknowledgedEvent with payload_hash {:?}", &payload_hash),
+                    Err(e) => error!("Failed to insert event data: {}", e)
+                }
+            } else {
+                error!("Could not find Switcheo.carbon.bridge.PayloadAcknowledgedEvent event from response");
+            }
+        }
+        Err(e) => {
+            error!("Error parsing JSON: {:?}, JSON str:{:?}", e, msg);
+        }
+    }
+}
+
+fn strip_quotes(input: &str) -> &str {
+    input.trim_matches('"')
 }

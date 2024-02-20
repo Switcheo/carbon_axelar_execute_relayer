@@ -1,4 +1,14 @@
 -- Add up migration script here
+CREATE TABLE payload_acknowledged_events
+(
+    id                      SERIAL PRIMARY KEY,
+    payload_type            NUMERIC NOT NULL,
+    nonce                   NUMERIC NOT NULL,
+    payload_hash            TEXT  NOT NULL UNIQUE,
+    payload                 TEXT  NOT NULL,
+    payload_encoding        TEXT  NOT NULL
+);
+
 CREATE TABLE withdraw_token_acknowledged_events
 (
     id                      SERIAL PRIMARY KEY,

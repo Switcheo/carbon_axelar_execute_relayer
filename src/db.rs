@@ -4,6 +4,27 @@ use sqlx::FromRow;
 use sqlx::types::{BigDecimal, Json};
 
 #[derive(Debug, Clone, PartialEq, FromRow)]
+pub struct DbPayloadAcknowledgedEvent {
+    pub id: i32,
+    // reference payload_types (from carbon x/bridge/types/payload_encoding.go)
+    // RegisterToken = 0
+    // DeregisterToken = 1
+    // DeployToken = 2
+    // RegisterExecutable = 3
+    // DeregisterExecutable = 4
+    // Withdraw = 5
+    // ExecuteGateway = 6
+    // WithdrawAndExecute = 7
+    // PauseContract = 8
+    // UnpauseContract = 9
+    pub payload_type: BigDecimal,
+    pub nonce: BigDecimal,
+    pub payload: String, // hex string
+    pub payload_hash: String, // hex string
+    pub payload_encoding: String,
+}
+
+#[derive(Debug, Clone, PartialEq, FromRow)]
 pub struct DbWithdrawTokenAcknowledgedEvent {
     pub id: i32,
     pub coin: Json<Coin>,
