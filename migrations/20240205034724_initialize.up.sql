@@ -2,7 +2,7 @@
 CREATE TABLE payload_acknowledged_events
 (
     id                      SERIAL PRIMARY KEY,
-    payload_type            NUMERIC NOT NULL,
+    payload_type            INTEGER NOT NULL,
     nonce                   NUMERIC NOT NULL,
     payload_hash            TEXT  NOT NULL UNIQUE,
     payload                 TEXT  NOT NULL,

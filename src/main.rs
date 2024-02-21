@@ -83,7 +83,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Spawn listener_carbon::init_ws as a concurrent task
             let carbon_pg_pool = pg_pool.clone();
             let carbon_listen_task = tokio::spawn(async move {
-                listener_carbon::init_ws(&conf.carbon_ws_url, &conf.relayer_deposit_address, carbon_pg_pool).await;
+                listener_carbon::init_ws(&conf.carbon, carbon_pg_pool).await;
             });
 
             // Spawn listener_evm::init_all_ws as a concurrent task

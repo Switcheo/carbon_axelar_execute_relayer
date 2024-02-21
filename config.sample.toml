@@ -1,13 +1,16 @@
-carbon_ws_url = "ws://localhost:26657/websocket"
-relayer_deposit_address = "tswth19cwu2rnstsntezuk23tcf0kq0lu9fc4rjz7085"
-
 [database]
 pg_url = "postgresql://localhost:5432/carbon_axelar_execute_relayer"
+
+[carbon]
+relay_admin_payloads = true
+relay_user_payloads = true
+ws_url = "ws://localhost:26657/websocket"
+relayer_deposit_address = "tswth19cwu2rnstsntezuk23tcf0kq0lu9fc4rjz7085"
 
 [[evm_chain]]
 name = "bsc"
 rpc_url = "https://bsc-testnet.publicnode.com"
-ws_url = "wss://bsc-testnet.publicnode.com"
+ws_url = ""
 axelar_gateway_proxy = "0x169ee9364B412B986d09e628eb74e60B2C092729"
-carbon_axelar_gateway = "0xEc424762e381BE59280E59555Fb988Ae32EAab08"
+carbon_axelar_gateway = "0xd008d68692224b70cAf19ec6443c463A735Ce9f2"
 relayer_private_key = ""

@@ -12,8 +12,8 @@ use sqlx::PgPool;
 use sqlx::types::BigDecimal;
 use tracing::{error, info, instrument, warn};
 
-use crate::conf::ChainConfig;
-use crate::db::{DbPayloadAcknowledgedEvent, DbWithdrawTokenAcknowledgedEvent};
+use crate::conf::Chain;
+use crate::db::{DbPayloadAcknowledgedEvent, DbWithdrawTokenAcknowledgedEvent, PayloadType};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, EthEvent)]
 #[ethevent(name = "ContractCallApproved", abi = "ContractCallApproved(bytes32,string,string,address,bytes32,bytes32,uint256)")]
@@ -31,7 +31,7 @@ pub struct ContractCallApprovedEvent {
 }
 
 #[instrument(name = "listener_evm", skip_all)]
-pub async fn init_all_ws(evm_chains: Vec<ChainConfig>, pg_pool: Arc<PgPool>) {
+pub async fn init_all_ws(evm_chains: Vec<Chain>, pg_pool: Arc<PgPool>) {
     for chain in evm_chains {
         let pg_pool_clone = pg_pool.clone();
         let chain_clone = chain.clone();
@@ -46,9 +46,9 @@ pub async fn init_all_ws(evm_chains: Vec<ChainConfig>, pg_pool: Arc<PgPool>) {
 
 // init_ws connect to the evm network via WebSocket and watch for relevant events
 #[instrument(name = "listener_evm", skip_all, fields(chain = chain_config.name))]
-async fn init_ws(chain_config: ChainConfig, pg_pool: Arc<PgPool>) -> Result<()> {
+async fn init_ws(chain_config: Chain, pg_pool: Arc<PgPool>) -> Result<()> {
     // Connect to the evm node
-    let provider = Provider::<Ws>::connect(&chain_config.ws_url).await
+    let provider = Provider::<Ws>::connect_with_reconnects(&chain_config.ws_url, 1000).await
         .context("Failed to connect to WS")?;
 
     let provider = Arc::new(provider);
@@ -74,10 +74,7 @@ async fn init_ws(chain_config: ChainConfig, pg_pool: Arc<PgPool>) -> Result<()> 
                 info!("Received ContractCallApprovedEvent for carbon_axelar_gateway ({:?}): {:?}", &chain_config.carbon_axelar_gateway, event);
                 let payload_hash = format!("{:?}", event.payload_hash);
 
-                // We only want to save payload_acknowledged_events for broadcasting in the following conditions:
-                // - it is saved in payload_acknowledged_events which means that it is whitelisted for free tx
-                // - there is a corresponding withdraw_token_acknowledged_event with the same payload_hash, with valid amounts
-
+                // get the payload event
                 let payload_acknowledged_result = get_payload_acknowledged_event(&pg_pool, &payload_hash).await;
                 let payload_acknowledged_event = match payload_acknowledged_result {
                     Ok(event) => {
@@ -98,17 +95,15 @@ async fn init_ws(chain_config: ChainConfig, pg_pool: Arc<PgPool>) -> Result<()> 
                     }
                 };
 
-                // if it is a token withdraw, we need to check withdraw_token_acknowledged_events to validate the fee
-                if payload_acknowledged_event.payload_type == BigDecimal::from(5) {
+                // If it is a token withdraw, we need to check withdrawal event to validate the fee
+                if payload_acknowledged_event.payload_type == PayloadType::Withdraw.to_i32() {
                     if let Err(e) = validate_withdraw(&pg_pool, &payload_hash).await {
                         error!("Skipping withdrawal payload_hash {:?} due to error: {:?}", &payload_hash, e);
                         continue
                     }
                 }
 
-
-                // Process the event data as needed
-                // save to db
+                // Save event to db
                 match sqlx::query!(
                     "INSERT INTO contract_call_approved_events (command_id, blockchain, broadcast_status, source_chain, source_address, contract_address, payload_hash, source_tx_hash, source_event_index, payload) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
                     format!("{:?}", event.command_id),

@@ -15,7 +15,7 @@ toml = "0.8.8"
 url = "2.5.0"
 serde_json = { version = "1.0.113", features = ["raw_value"] }
 dotenvy = "0.15.7"
-sqlx = { version = "0.7.3", features = ["runtime-tokio-rustls", "postgres", "bigdecimal", "json"] }
+sqlx = { version = "0.7.3", features = ["runtime-tokio-rustls", "postgres", "bigdecimal", "json", "macros"] }
 ethers = { version = "2.0.13", features = ["ws", "rustls"] }
 futures = "0.3.30"
 hex = "0.4.3"

@@ -11,14 +11,13 @@ pub struct AppConfig {
     #[serde(default)]
     pub debug: bool, // defaults to false with serde(default)
     pub database: Database,
-    pub carbon_ws_url: String,
-    pub relayer_deposit_address: String,
+    pub carbon: Carbon,
     #[serde(rename = "evm_chain")]
-    pub evm_chains: Vec<ChainConfig>,
+    pub evm_chains: Vec<Chain>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
-pub struct ChainConfig {
+pub struct Chain {
     pub name: String,
     pub rpc_url: String,
     pub ws_url: String,
@@ -31,6 +30,15 @@ pub struct ChainConfig {
 #[allow(unused)]
 pub struct Database {
     pub pg_url: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[allow(unused)]
+pub struct Carbon {
+    pub relay_admin_payloads: bool,
+    pub relay_user_payloads: bool,
+    pub ws_url: String,
+    pub relayer_deposit_address: String,
 }
 
 impl AppConfig {

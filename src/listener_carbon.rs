@@ -9,6 +9,8 @@ use sqlx::PgPool;
 use sqlx::types::BigDecimal;
 use tracing::{debug, error, info, instrument};
 use url::Url;
+use crate::conf::Carbon;
+use crate::db::PayloadType;
 
 use crate::ws::{JSONWebSocketClient};
 
@@ -69,9 +71,9 @@ struct Attribute {
 }
 
 #[instrument(name = "listener_carbon", skip_all)]
-pub async fn init_ws(url: &String, relayer_deposit_address: &String, pg_pool: Arc<PgPool>) {
-    info!("Initializing WS for Carbon. Watching {:?} on {:?} for events", relayer_deposit_address, url);
-    let url = Url::parse(url).expect(&format!("Invalid WS URL {:?}", url));
+pub async fn init_ws(carbon_config: &Carbon, pg_pool: Arc<PgPool>) {
+    info!("Initializing WS for Carbon. Watching {:?} on {:?} for events", &carbon_config.relayer_deposit_address, &carbon_config.ws_url);
+    let url = Url::parse(&carbon_config.ws_url).expect(&format!("Invalid WS URL {:?}", &carbon_config.ws_url));
 
     // create new client
     let mut client = JSONWebSocketClient::new(url);
@@ -80,7 +82,7 @@ pub async fn init_ws(url: &String, relayer_deposit_address: &String, pg_pool: Ar
     let pool = pg_pool.clone();
     client.add_cosmos_subscription(
         "1".to_string(),
-        format!("Switcheo.carbon.bridge.WithdrawTokenAcknowledgedEvent.relayer_deposit_address CONTAINS '{}'", relayer_deposit_address),
+        format!("Switcheo.carbon.bridge.WithdrawTokenAcknowledgedEvent.relayer_deposit_address CONTAINS '{}'", &carbon_config.relayer_deposit_address),
         Arc::new(Mutex::new(move |msg: String| {
             // Spawn an async task to handle the message
             let pool = pool.clone();
@@ -90,14 +92,16 @@ pub async fn init_ws(url: &String, relayer_deposit_address: &String, pg_pool: Ar
         })));
     // add PayloadAcknowledgedEvent subscription
     let pool = pg_pool.clone();
+    let carbon_config = carbon_config.clone();
     client.add_cosmos_subscription(
         "2".to_string(),
         format!("Switcheo.carbon.bridge.PayloadAcknowledgedEvent.nonce EXISTS"),
         Arc::new(Mutex::new(move |msg: String| {
             let pool = pool.clone();
+            let carbon_config = carbon_config.clone();
             // Spawn an async task to handle the message
             tokio::spawn(async move {
-                process_payload_acknowledged_message(msg, pool.clone()).await;
+                process_payload_acknowledged_message(msg, carbon_config.clone(), pool.clone()).await;
             });
         })));
 
@@ -166,7 +170,7 @@ async fn process_withdraw_message(msg: String, pg_pool: Arc<PgPool>) {
 
 // process_payload_acknowledged_message processes the PayloadAcknowledgedEvent
 #[instrument(skip_all)]
-async fn process_payload_acknowledged_message(msg: String, pg_pool: Arc<PgPool>) {
+async fn process_payload_acknowledged_message(msg: String, carbon_config: Carbon, pg_pool: Arc<PgPool>) {
     info!("Processing new PayloadAcknowledgedEvent from Carbon");
 
     // Process the message and interact with the database
@@ -177,10 +181,13 @@ async fn process_payload_acknowledged_message(msg: String, pg_pool: Arc<PgPool>)
             // look for Switcheo.carbon.bridge.PayloadAcknowledgedEvent
             if let Some(event) = query_response.result.data.value.tx_result.result.events.iter().find(|e| e.event_type == "Switcheo.carbon.bridge.PayloadAcknowledgedEvent") {
                 let payload_type = event.attributes.iter().find(|a| a.key == "payload_type").map(|a| a.value.clone()).unwrap_or_default();
-                let payload_type = BigDecimal::from_str(strip_quotes(&payload_type))
-                    .expect("Failed to parse payload_type into BigDecimal");
+                let payload_type: PayloadType = payload_type.parse().expect("PayloadType::Unknown");
 
-                // TODO: check payload type with list of payload types that we want
+                // check payload type with list of payload types that we want
+                if !is_whitelisted_payload(&carbon_config, &payload_type) {
+                    info!("Payload type not whitelisted for relaying: {:?}", &payload_type);
+                    return;
+                }
 
                 let nonce = event.attributes.iter().find(|a| a.key == "nonce").map(|a| a.value.clone()).unwrap_or_default();
                 let nonce = BigDecimal::from_str(strip_quotes(&nonce))
@@ -197,7 +204,7 @@ async fn process_payload_acknowledged_message(msg: String, pg_pool: Arc<PgPool>)
                 // save event details to db
                 let result = sqlx::query!(
                         "INSERT INTO payload_acknowledged_events (payload_type, nonce, payload_hash, payload, payload_encoding) VALUES ($1, $2, $3, $4, $5)",
-                        payload_type,
+                        payload_type as i32,
                         nonce,
                         &payload_hash,
                         encode_prefixed(&payload_bytes),
@@ -218,6 +225,28 @@ async fn process_payload_acknowledged_message(msg: String, pg_pool: Arc<PgPool>)
             error!("Error parsing JSON: {:?}, JSON str:{:?}", e, msg);
         }
     }
+}
+
+fn is_whitelisted_payload(carbon_config: &Carbon, payload_type: &PayloadType) -> bool {
+    if carbon_config.relay_admin_payloads && matches!(payload_type,
+            PayloadType::RegisterToken |
+            PayloadType::DeregisterToken |
+            PayloadType::DeployToken |
+            PayloadType::RegisterExecutable |
+            PayloadType::DeregisterExecutable |
+            PayloadType::ExecuteGateway |
+            PayloadType::WithdrawAndExecute |
+            PayloadType::PauseContract |
+            PayloadType::UnpauseContract
+        ) {
+        return true;
+    }
+    if carbon_config.relay_user_payloads && matches!(payload_type,
+            PayloadType::Withdraw
+        ) {
+        return true;
+    }
+    return false;
 }
 
 fn strip_quotes(input: &str) -> &str {

@@ -3,6 +3,20 @@ use serde::{Deserialize, Deserializer, Serialize};
 use sqlx::FromRow;
 use sqlx::types::{BigDecimal, Json};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PayloadType {
+    RegisterToken = 0,
+    DeregisterToken,
+    DeployToken,
+    RegisterExecutable,
+    DeregisterExecutable,
+    Withdraw,
+    ExecuteGateway,
+    WithdrawAndExecute,
+    PauseContract,
+    UnpauseContract,
+}
+
 #[derive(Debug, Clone, PartialEq, FromRow)]
 pub struct DbPayloadAcknowledgedEvent {
     pub id: i32,
@@ -17,7 +31,7 @@ pub struct DbPayloadAcknowledgedEvent {
     // WithdrawAndExecute = 7
     // PauseContract = 8
     // UnpauseContract = 9
-    pub payload_type: BigDecimal,
+    pub payload_type: i32,
     pub nonce: BigDecimal,
     pub payload: String, // hex string
     pub payload_hash: String, // hex string
@@ -66,4 +80,30 @@ fn deserialize_amount<'de, D>(deserializer: D) -> Result<u64, D::Error>
 {
     let s: String = Deserialize::deserialize(deserializer)?;
     u64::from_str(&s).map_err(serde::de::Error::custom)
+}
+
+impl PayloadType {
+    pub fn to_i32(&self) -> i32 {
+        *self as i32
+    }
+}
+
+impl FromStr for PayloadType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "0" => Ok(PayloadType::RegisterToken),
+            "1" => Ok(PayloadType::DeregisterToken),
+            "2" => Ok(PayloadType::DeployToken),
+            "3" => Ok(PayloadType::RegisterExecutable),
+            "4" => Ok(PayloadType::DeregisterExecutable),
+            "5" => Ok(PayloadType::Withdraw),
+            "6" => Ok(PayloadType::ExecuteGateway),
+            "7" => Ok(PayloadType::WithdrawAndExecute),
+            "8" => Ok(PayloadType::PauseContract),
+            "9" => Ok(PayloadType::UnpauseContract),
+            _ => Err(()), // or Ok(PayloadType::Unknown) if you have an Unknown variant
+        }
+    }
 }
