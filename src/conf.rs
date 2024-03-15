@@ -17,12 +17,24 @@ pub struct AppConfig {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+#[allow(unused)]
+pub struct Carbon {
+    pub relay_admin_payloads: bool,
+    pub relay_user_payloads: bool,
+    pub rpc_url: String,
+    pub ws_url: String,
+    pub relayer_deposit_address: String,
+    pub axelar_bridge_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 pub struct Chain {
-    pub name: String,
+    pub chain_id: String,
     pub rpc_url: String,
     pub ws_url: String,
     pub axelar_gateway_proxy: String,
     pub carbon_axelar_gateway: String,
+    pub max_query_blocks: u64,
     pub relayer_private_key: String,
 }
 
@@ -30,15 +42,6 @@ pub struct Chain {
 #[allow(unused)]
 pub struct Database {
     pub pg_url: String,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-#[allow(unused)]
-pub struct Carbon {
-    pub relay_admin_payloads: bool,
-    pub relay_user_payloads: bool,
-    pub ws_url: String,
-    pub relayer_deposit_address: String,
 }
 
 impl AppConfig {

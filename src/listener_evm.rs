@@ -13,7 +13,7 @@ use sqlx::types::BigDecimal;
 use tracing::{error, info, instrument, warn};
 
 use crate::conf::Chain;
-use crate::db::{DbPayloadAcknowledgedEvent, DbWithdrawTokenAcknowledgedEvent, PayloadType};
+use crate::db::{DbPayloadAcknowledgedEvent, DbWithdrawTokenConfirmedEvent, PayloadType};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, EthEvent)]
 #[ethevent(name = "ContractCallApproved", abi = "ContractCallApproved(bytes32,string,string,address,bytes32,bytes32,uint256)")]
@@ -35,7 +35,7 @@ pub async fn init_all_ws(evm_chains: Vec<Chain>, pg_pool: Arc<PgPool>) {
     for chain in evm_chains {
         let pg_pool_clone = pg_pool.clone();
         let chain_clone = chain.clone();
-        info!("Subscribing to {} on {}", &chain.name, &chain.ws_url);
+        info!("Subscribing to {} on {}", &chain.chain_id, &chain.ws_url);
         tokio::spawn(async move {
             if let Err(e) = init_ws(chain_clone, pg_pool_clone).await {
                 error!("Error initializing WebSocket for {}: {}", &chain.ws_url, e);
@@ -45,7 +45,7 @@ pub async fn init_all_ws(evm_chains: Vec<Chain>, pg_pool: Arc<PgPool>) {
 }
 
 // init_ws connect to the evm network via WebSocket and watch for relevant events
-#[instrument(name = "listener_evm", skip_all, fields(chain = chain_config.name))]
+#[instrument(name = "listener_evm", skip_all, fields(chain = chain_config.chain_id))]
 async fn init_ws(chain_config: Chain, pg_pool: Arc<PgPool>) -> Result<()> {
     // Connect to the evm node
     let provider = Provider::<Ws>::connect_with_reconnects(&chain_config.ws_url, 1000).await
@@ -66,48 +66,58 @@ async fn init_ws(chain_config: Chain, pg_pool: Arc<PgPool>) -> Result<()> {
     );
     let mut events = event.subscribe().await?.take(5);
 
-    info!("Starting to watch {:?} for ContractCallApprovedEvent", &chain_config.name);
+    info!("Starting to watch {:?} for ContractCallApprovedEvent", &chain_config.chain_id);
     while let Some(log) = events.next().await {
         // TODO: extract to separate thread?
         match log {
             Ok(event) => {
-                info!("Received ContractCallApprovedEvent for carbon_axelar_gateway ({:?}): {:?}", &chain_config.carbon_axelar_gateway, event);
-                let payload_hash = format!("{:?}", event.payload_hash);
+                save_call_contract_approved_event(chain_config.clone(), pg_pool.clone(), event).await;
+            }
+            Err(e) => error!("Error listening for ContractCallApprovedEvent logs: {:?}", e),
+        }
+    }
 
-                // get the payload event
-                let payload_acknowledged_result = get_payload_acknowledged_event(&pg_pool, &payload_hash).await;
-                let payload_acknowledged_event = match payload_acknowledged_result {
-                    Ok(event) => {
-                        match event {
-                            Some(event) => {
-                                info!("Found matching event payload_acknowledged_events in DB with payload_hash: {:?}", &payload_hash);
-                                event
-                            },
-                            None => {
-                                warn!("Skipping as DbPayloadAcknowledgedEvent payload_hash {:?} does not exist in DB", &payload_hash);
-                                continue
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        error!("Error while querying DB for DbPayloadAcknowledgedEvent, error: {:?}", &e);
-                        continue
-                    }
-                };
+    Ok(())
+}
 
-                // If it is a token withdraw, we need to check withdrawal event to validate the fee
-                if payload_acknowledged_event.payload_type == PayloadType::Withdraw.to_i32() {
-                    if let Err(e) = validate_withdraw(&pg_pool, &payload_hash).await {
-                        error!("Skipping withdrawal payload_hash {:?} due to error: {:?}", &payload_hash, e);
-                        continue
-                    }
+pub async fn save_call_contract_approved_event(chain_config: Chain, pg_pool: Arc<PgPool>, event: ContractCallApprovedEvent) {
+    info!("Received ContractCallApprovedEvent for carbon_axelar_gateway ({:?}): {:?}", &chain_config.carbon_axelar_gateway, event);
+    let payload_hash = format!("{:?}", event.payload_hash);
+
+    // get the payload event
+    let payload_acknowledged_result = get_payload_acknowledged_event(&pg_pool, &payload_hash).await;
+    let payload_acknowledged_event = match payload_acknowledged_result {
+        Ok(event) => {
+            match event {
+                Some(event) => {
+                    info!("Found matching event payload_acknowledged_events in DB with payload_hash: {:?}", &payload_hash);
+                    event
+                },
+                None => {
+                    warn!("Skipping as DbPayloadAcknowledgedEvent payload_hash {:?} does not exist in DB", &payload_hash);
+                    return
                 }
+            }
+        }
+        Err(e) => {
+            error!("Error while querying DB for DbPayloadAcknowledgedEvent, error: {:?}", &e);
+            return
+        }
+    };
 
-                // Save event to db
-                match sqlx::query!(
+    // If it is a token withdraw, we need to check withdrawal event to validate the fee
+    if payload_acknowledged_event.payload_type == PayloadType::Withdraw.to_i32() {
+        if let Err(e) = validate_withdraw(&pg_pool, &payload_acknowledged_event.nonce).await {
+            error!("Skipping withdrawal nonce {:?} due to error: {:?}", &payload_acknowledged_event.nonce, e);
+            return
+        }
+    }
+
+    // Save event to db
+    match sqlx::query!(
                     "INSERT INTO contract_call_approved_events (command_id, blockchain, broadcast_status, source_chain, source_address, contract_address, payload_hash, source_tx_hash, source_event_index, payload) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
                     format!("{:?}", event.command_id),
-                    chain_config.name,
+                    chain_config.chain_id,
                     "pending_broadcast",
                     event.source_chain,
                     event.source_address,
@@ -117,22 +127,16 @@ async fn init_ws(chain_config: Chain, pg_pool: Arc<PgPool>) -> Result<()> {
                     BigDecimal::from_str(&event.source_event_index.to_string()).unwrap(),
                     &payload_acknowledged_event.payload
                 )
-                    .execute(&*pg_pool)
-                    .await {
-                    Ok(_result) => info!("Inserted event successfully with payload_hash {}", &payload_hash),
-                    Err(e) => error!("Unable to insert event, err {}:", e),
-                };
-            }
-            Err(e) => error!("Error listening for ContractCallApprovedEvent logs: {:?}", e),
-        }
-    }
-
-    Ok(())
+        .execute(&*pg_pool)
+        .await {
+        Ok(_result) => info!("Inserted event successfully with payload_hash {}", &payload_hash),
+        Err(e) => error!("Unable to insert event, err {}:", e),
+    };
 }
 
 
 async fn get_payload_acknowledged_event(pg_pool: &Arc<PgPool>, payload_hash: &String) -> Result<Option<DbPayloadAcknowledgedEvent>> {
-    // Check if we should broadcast this event by checking the withdraw_token_acknowledged_events
+    // Check if we should broadcast this event by checking the withdraw_token_confirmed_events
     sqlx::query_as::<_, DbPayloadAcknowledgedEvent>(
         "SELECT * FROM payload_acknowledged_events WHERE payload_hash = $1",
     )
@@ -140,26 +144,26 @@ async fn get_payload_acknowledged_event(pg_pool: &Arc<PgPool>, payload_hash: &St
         .fetch_optional(pg_pool.as_ref()).await.context("sql query error for payload_acknowledged_events")
 }
 
-async fn validate_withdraw(pg_pool: &Arc<PgPool>, payload_hash: &String) -> Result<()> {
-    // Check if we should broadcast this event by checking the withdraw_token_acknowledged_events
-    let result = sqlx::query_as::<_, DbWithdrawTokenAcknowledgedEvent>(
+async fn validate_withdraw(pg_pool: &Arc<PgPool>, nonce: &BigDecimal) -> Result<()> {
+    // Check if we should broadcast this event by checking the withdraw_token_confirmed_events
+    let result = sqlx::query_as::<_, DbWithdrawTokenConfirmedEvent>(
         r#"
-                        SELECT * FROM withdraw_token_acknowledged_events
-                        WHERE payload_hash = $1
+                        SELECT * FROM withdraw_token_confirmed_events
+                        WHERE nonce = $1
                         AND (coin->>'amount')::numeric > 0
                         AND (relay_fee->>'amount')::numeric > 0
                         "#,
     )
-        .bind(&payload_hash)
+        .bind(nonce)
         .fetch_optional(pg_pool.as_ref()).await?;
 
     let withdraw_event = match result {
         Some(event) => {
-            info!("Found matching withdraw_token_acknowledged_events in DB with payload_hash: {:?}", &payload_hash);
+            info!("Found matching withdraw_token_confirmed_events in DB with nonce: {:?}", &nonce);
             event
         }
         None => {
-            anyhow::bail!("Skipping as DbWithdrawTokenAcknowledgedEvent payload_hash {:?} does not exist in DB or has 0 amounts", &payload_hash);
+            anyhow::bail!("Skipping as DbWithdrawTokenConfirmedEvent nonce {:?} does not exist in DB or has 0 amounts", &nonce);
         }
     };
 

@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use clap::{Parser, Subcommand};
 use sqlx::PgPool;
-use tracing::Level;
+use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
 use conf::AppConfig;
@@ -14,6 +14,7 @@ mod listener_carbon;
 mod listener_evm;
 mod db;
 mod broadcaster_evm;
+mod tx_sync;
 
 #[derive(Parser)]
 #[command(author = "Switcheo Labs Pte. Ltd.", name = "Carbon-Axelar Relayer", version, about = "Carbon-Axelar Relayer", long_about = None)]
@@ -34,7 +35,21 @@ struct Cli {
 enum Commands {
     /// Run
     Run,
-    // Add { name: Option<String>, lol: Option<String> },
+    /// Sync a specific transaction
+    Sync {
+        /// Transaction hash to resync
+        #[arg(value_name = "TX_HASH")]
+        tx_hash: String,
+    },
+    /// Sync from a specific block range
+    SyncFrom {
+        /// Start block height for resync
+        #[arg(value_name = "START_HEIGHT")]
+        start_height: u64,
+        /// End block height for resync
+        #[arg(value_name = "END_HEIGHT")]
+        end_height: u64,
+    },
     // Run
     // #[command(subcommand)]
     // query_command: Option<QueryCommands>,
@@ -102,8 +117,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Wait for all spawned tasks to complete
             let _ = tokio::join!(carbon_listen_task, evm_listen_all_task, evm_execute_task);
+        },
+        Some(Commands::Sync { tx_hash }) => {
+            // Call a function to handle the sync logic for a specific transaction hash
+            // TODO: implement
+            info!("NYI, input: {}", tx_hash);
+        },
+        Some(Commands::SyncFrom { start_height, end_height }) => {
+            // Call a function to handle the sync logic for a range of block heights
+            tx_sync::sync_block_range(conf.clone(), pg_pool.clone(), *start_height, *end_height).await?;
         }
-
         None => {}
     }
 

@@ -39,7 +39,7 @@ pub struct DbPayloadAcknowledgedEvent {
 }
 
 #[derive(Debug, Clone, PartialEq, FromRow)]
-pub struct DbWithdrawTokenAcknowledgedEvent {
+pub struct DbWithdrawTokenConfirmedEvent {
     pub id: i32,
     pub coin: Json<Coin>,
     pub connection_id: String,
@@ -47,8 +47,6 @@ pub struct DbWithdrawTokenAcknowledgedEvent {
     pub relay_fee: Json<Coin>,
     pub relayer_deposit_address: String,
     pub sender: String,
-    pub payload_hash: String, // hex string
-    pub payload: String, // hex string
 }
 
 #[derive(Debug, Clone, PartialEq, FromRow)]

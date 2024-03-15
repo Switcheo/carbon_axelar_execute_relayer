@@ -5,15 +5,14 @@ e.g. withdrawals, or any external executions
 
 ## How it works:
 
-- Watch and save `Switcheo.carbon.bridge.WithdrawTokenAcknowledgedEvent` from Carbon where event.relayer_deposit_address == `relayer_deposit_address` in config
-- Watch and save `ContractCallApproved` event from external chain's Axelar Gateway if the `payload_hash` matches the `WithdrawTokenAcknowledgedEvent` record in the DB
+- Watch and save `Switcheo.carbon.bridge.PayloadAcknowledgedEvent` from Carbon where event.relayer_deposit_address == `relayer_deposit_address` in config
+- Watch and save `ContractCallApproved` event from external chain's Axelar Gateway if the `payload_hash` matches the `PayloadAcknowledgedEvent` record in the DB
 - poll any new event saved,
   - check `is_contract_call_approved` to see if it's already executed
-  - check enough relay fees are sent by user 
+  - if it is a withdrawal, check enough relay fees are sent by user 
   - execute to the external blockchain to process the withdrawal or GMP
 
 TODO:
-- [ ] whitelist flag for admin relays
 - [ ] proper fee conversion
 - [ ] rebroadcast from cli
 
@@ -87,4 +86,21 @@ sqlx migrate revert
 sqlx --help
 sqlx database --help
 sqlx <command> --help
+```
+
+## Stuck Transactions
+
+Sometimes transactions get stuck at various points either when a relayer is down or an RPC or WS endpoint is down.
+
+The way to resolve this is to manually call the cli to save the tx since it is missed
+
+
+### Commands
+
+#### Resync command
+
+```bash
+# resync from carbon's start block height to end block height
+cargo run -- -vv sync-from 318371 318490
+
 ```

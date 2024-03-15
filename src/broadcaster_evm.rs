@@ -28,7 +28,7 @@ abigen!(
 abigen!(
     IAxelarGateway,
     r#"[
-        isContractCallApproved(bytes32,string,string,address,bytes32())(bool)
+        isContractCallApproved(bytes32,string,string,address,bytes32)(bool)
     ]"#
 );
 
@@ -89,10 +89,10 @@ async fn init_channels(evm_chains: Vec<Chain>, pg_pool: Arc<PgPool>) -> HashMap<
     let mut channels = HashMap::new();
     // Initialize providers and channels for each chain
     for chain in evm_chains {
-        info!("Initializing receive_and_broadcast for {:?}", &chain.name);
+        info!("Initializing receive_and_broadcast for {:?}", &chain.chain_id);
         // init channel
         let (tx, rx) = mpsc::channel::<DbContractCallApprovedEvent>(100); // Adjust the size based on expected load
-        channels.insert(chain.name.clone(), tx);
+        channels.insert(chain.chain_id.clone(), tx);
         let pg_pool = pg_pool.clone();
 
         // spawn receiving logic
@@ -107,7 +107,7 @@ async fn init_channels(evm_chains: Vec<Chain>, pg_pool: Arc<PgPool>) -> HashMap<
 }
 
 
-#[instrument(name = "broadcaster_evm::receive_and_broadcast", skip_all, fields(chain = chain.name))]
+#[instrument(name = "broadcaster_evm::receive_and_broadcast", skip_all, fields(chain = chain.chain_id))]
 async fn receive_and_broadcast(chain: Chain, mut rx: Receiver<DbContractCallApprovedEvent>, pg_pool: Arc<PgPool>) -> Result<()> {
     let provider = init_provider(chain.clone()).await?;
     let axelar_gateway = chain.axelar_gateway_proxy.parse::<Address>()?;
@@ -131,7 +131,7 @@ async fn receive_and_broadcast(chain: Chain, mut rx: Receiver<DbContractCallAppr
             .unwrap_or(false);
         if !is_approved {
             // If already executed, mark db event as executed
-            info!("Skipping event as it is not approved and assumed to be executed, payload_hash: {:?}", &event.payload_hash);
+            info!("Skipping event as blockchain query for is_contract_call_approved is !approved. This can mean it is already executed, payload_hash: {:?}", &event.payload_hash);
             // update executed
             update_executed(&pg_pool, &event).await?;
             continue;
