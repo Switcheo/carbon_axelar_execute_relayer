@@ -228,7 +228,7 @@ pub async fn save_payload_event(carbon_config: &Carbon, pg_pool: Arc<PgPool>, ev
         .await;
 
     match result {
-        Ok(_res) => info!("Saved PayloadAcknowledgedEvent with payload_hash {:?}", &payload_hash),
+        Ok(_res) => info!("Saved PayloadAcknowledgedEvent with payload_hash {:?}, nonce {:?}", &payload_hash, nonce),
         Err(e) => error!("Failed to insert event data: {}", e)
     }
     false

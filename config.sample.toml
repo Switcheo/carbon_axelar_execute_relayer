@@ -27,7 +27,7 @@ ws_url = ""
 axelar_gateway_proxy = "0x169ee9364B412B986d09e628eb74e60B2C092729"
 # Carbon's SC gateway
 carbon_axelar_gateway = "0xCBCBE6c390657f4E40151B6301066fe4FCdd14Ac"
-# max_query_blocks is for resyncing, as some chains has a limit on how much you can query at once
+# max_query_blocks is for resyncing missed events, as some chains has a limit on how much you can query at once
 max_query_blocks = 10000
 # private key to the evm relayer addresss
 relayer_private_key = ""

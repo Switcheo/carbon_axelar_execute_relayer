@@ -183,17 +183,12 @@ async fn update_executed(pg_pool: &Arc<PgPool>, event: &DbContractCallApprovedEv
 async fn init_provider(chain: Chain) -> Result<Arc<SignerMiddleware<Provider<Http>, Wallet<SigningKey>>>> {
     let provider = Provider::<Http>::try_from(chain.rpc_url)
         .context("Failed to connect to the network")?;
-
     let chain_id = provider.get_chainid().await
         .context("Failed to get chain ID")?;
-
     let wallet = chain.relayer_private_key.parse::<LocalWallet>()
         .context("Error parsing wallet key")?;
-
     let wallet = wallet.with_chain_id(chain_id.as_u64());
-
     let provider = Arc::new(SignerMiddleware::new(provider, wallet));
-
     Ok(provider)
 }
 
@@ -228,7 +223,6 @@ async fn broadcast_tx(chain: Chain, event: DbContractCallApprovedEvent, provider
         info!("Transaction for payload_hash {} successfully executed. tx_hash: {:?}", &event.payload_hash, &receipt.transaction_hash);
         debug!("Transaction receipt: {receipt:?}");
     } else {
-        // Consider using a custom error type or anyhow::Error for a generic error
         anyhow::bail!("Transaction failed with receipt: {receipt:?}");
     }
 
