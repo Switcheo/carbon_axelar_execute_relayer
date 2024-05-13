@@ -1,3 +1,5 @@
+pub mod carbon_events;
+
 use std::str::FromStr;
 use serde::{Deserialize, Deserializer, Serialize};
 use sqlx::FromRow;

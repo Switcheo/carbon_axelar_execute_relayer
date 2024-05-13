@@ -15,6 +15,8 @@ mod listener_evm;
 mod db;
 mod broadcaster_evm;
 mod tx_sync;
+mod constants;
+mod util;
 
 #[derive(Parser)]
 #[command(author = "Switcheo Labs Pte. Ltd.", name = "Carbon-Axelar Relayer", version, about = "Carbon-Axelar Relayer", long_about = None)]

@@ -4,6 +4,7 @@ use config::{Config, ConfigError, File};
 use dotenvy::dotenv;
 use serde::Deserialize;
 use tracing::info;
+use crate::db::PayloadType;
 
 #[derive(Clone, Debug, Deserialize)]
 #[allow(unused)]
@@ -58,4 +59,26 @@ impl AppConfig {
         // Deserialize (and thus freeze) the entire configuration
         c.try_deserialize()
     }
+}
+
+pub fn is_whitelisted_payload(carbon_config: &Carbon, payload_type: &PayloadType) -> bool {
+    if carbon_config.relay_admin_payloads && matches!(payload_type,
+            PayloadType::RegisterToken |
+            PayloadType::DeregisterToken |
+            PayloadType::DeployToken |
+            PayloadType::RegisterExecutable |
+            PayloadType::DeregisterExecutable |
+            PayloadType::ExecuteGateway |
+            PayloadType::WithdrawAndExecute |
+            PayloadType::PauseContract |
+            PayloadType::UnpauseContract
+        ) {
+        return true;
+    }
+    if carbon_config.relay_user_payloads && matches!(payload_type,
+            PayloadType::Withdraw
+        ) {
+        return true;
+    }
+    return false;
 }

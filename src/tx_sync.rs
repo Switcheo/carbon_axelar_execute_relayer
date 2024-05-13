@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use crate::conf::{AppConfig, Chain};
-use crate::listener_carbon::{Event, TxResultInner, save_payload_event, save_withdraw_event, strip_quotes};
+use crate::listener_carbon::{Event, TxResultInner, save_payload_event, save_bridge_pending_action_event, strip_quotes};
 use anyhow::{Context, Result};
 use ethers::addressbook::Address;
 use ethers::prelude::{EthEvent, Filter, H256, Http, Middleware, Provider, ValueOrArray};
@@ -55,7 +55,7 @@ pub async fn sync_block_range(conf: AppConfig, pg_pool: Arc<PgPool>, start_heigh
     info!("Found {} transactions with WithdrawTokenConfirmedEvent", response.result.total_count);
     // extract all events and save events
     for event in extract_events(response, "Switcheo.carbon.bridge.WithdrawTokenConfirmedEvent") {
-        save_withdraw_event(pg_pool.clone(), &event.clone()).await;
+        save_bridge_pending_action_event(pg_pool.clone(), &event.clone()).await;
     }
 
     // Find and save EVM event for each new payload_hash found

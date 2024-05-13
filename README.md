@@ -12,6 +12,18 @@ e.g. withdrawals, or any external executions
   - if it is a withdrawal, check enough relay fees are sent by user 
   - execute to the external blockchain to process the withdrawal or GMP
 
+## How it works (new):
+- Watch `Switcheo.carbon.bridge.BridgePendingAction` from Carbon
+- Check if fees are profitable for relay (See below)
+- If profitable, save `Switcheo.carbon.bridge.BridgePendingAction` record in DB with its nonce
+- Call StartRelay on Carbon
+- Watch for `BridgeAcknowledgeEvent` (continue) or `BridgeRevertEvent` (delete action and stop processing)
+- Watch and save `Switcheo.carbon.bridge.PayloadSent` from Carbon where event.nonce matches nonce in DB
+- Watch and save `ContractCallApproved` event from external chain's Axelar Gateway if the `payload_hash` matches the `PayloadSentEvent` record in the DB
+- poll any new event saved,
+  - check `is_contract_call_approved` to see if it's already executed
+  - execute to the external blockchain to process the withdrawal or GMP
+
 TODO:
 - [ ] proper fee conversion
 - [ ] rebroadcast from cli
