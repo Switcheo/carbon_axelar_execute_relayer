@@ -19,6 +19,18 @@ pub async fn get_axelar_call_contract_event(pg_pool: &Arc<PgPool>, payload_hash:
         .fetch_optional(pg_pool.as_ref()).await.context("sql query error for axelar_call_contract_events")
 }
 
+pub async fn get_chain_id_for_nonce(pg_pool: &Arc<PgPool>, nonce: &BigDecimal) -> anyhow::Result<Option<String>> {
+    let result = sqlx::query_as::<_, DbPendingActionEvent>(
+        "SELECT * FROM pending_action_events WHERE nonce = $1",
+    )
+        .bind(nonce)
+        .fetch_optional(pg_pool.as_ref()).await.context("sql query error for pending_action_events").await;
+    match result {
+        Some(event) => Ok(Some(event.chain_id)),
+        None => Ok(None),
+    }
+}
+
 pub async fn save_bridge_pending_action_event(pg_pool: Arc<PgPool>, event: &DbPendingActionEvent) {
     let result = sqlx::query!(
                         "INSERT INTO pending_action_events (connection_id, bridge_id, chain_id, nonce, pending_action_type, relay_details) VALUES ($1, $2, $3, $4, $5, $6)",

@@ -7,9 +7,10 @@ use ethers::utils::hex::{decode, encode_prefixed};
 use ethers::utils::keccak256;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use tracing::{info, instrument};
+use tracing::{error, info, instrument, warn};
 use crate::constants::events::{CARBON_AXELAR_CALL_CONTRACT_EVENT, CARBON_BRIDGE_PENDING_ACTION_EVENT};
-use crate::db::carbon_events::{save_axelar_call_contract_event, save_bridge_pending_action_event};
+use crate::db::carbon_events::{get_axelar_call_contract_event, get_chain_id_for_nonce, save_axelar_call_contract_event, save_bridge_pending_action_event};
+use crate::db::DbAxelarCallContractEvent;
 use crate::listener_evm::{ContractCallApprovedEvent, save_call_contract_approved_event};
 use crate::util::carbon::{parse_axelar_call_contract_event, parse_bridge_pending_action_event};
 use crate::util::cosmos::{Event, TxResultInner};
@@ -60,7 +61,7 @@ pub async fn sync_block_range(conf: AppConfig, pg_pool: Arc<PgPool>, start_heigh
         save_bridge_pending_action_event(pg_pool.clone(), &bridge_pending_action_event).await;
     }
 
-    let saved_call_contract_events: Vec<>
+    let mut saved_call_contract_events: Vec<DbAxelarCallContractEvent> = Vec::new();
     // Find and save CARBON_AXELAR_CALL_CONTRACT_EVENT event
     let query = format!("{}.nonce EXISTS AND tx.height>={} AND tx.height<={}", CARBON_AXELAR_CALL_CONTRACT_EVENT, start_height, end_height);
     let response = abci_query(&conf.carbon.rpc_url, &query).await?;
@@ -68,26 +69,49 @@ pub async fn sync_block_range(conf: AppConfig, pg_pool: Arc<PgPool>, start_heigh
     // extract all events and save events
     for event in extract_events(response, CARBON_AXELAR_CALL_CONTRACT_EVENT) {
         let axelar_call_contract_event = parse_axelar_call_contract_event(event);
+        if !should_save_call_contract_event(&axelar_call_contract_event) {
+            continue
+        }
         save_axelar_call_contract_event(pg_pool.clone(), *axelar_call_contract_event.clone()).await;
+        saved_call_contract_events.push(axelar_call_contract_event.clone())
     }
 
     // Find and save EVM event for each new payload_hash found
     // TODO: can be refactored and optimized to pass in multiple payload_hashes
-    for event in payload_events {
-        let chain_id = event.attributes.iter().find(|a| a.key == "chain_id").map(|a| a.value.clone()).unwrap_or_default();
-        let chain_id = strip_quotes(&chain_id);
+    for event in saved_call_contract_events {
+        let chain_id_result = get_chain_id_for_nonce(&pg_pool, &event.nonce).await;
+        let chain_id = match chain_id_result {
+            Ok(chain_id) => {
+                match chain_id {
+                    Some(chain_id) => {
+                        info!("Found matching event pending_action_events in DB with nonce: {:?}", &event.nonce);
+                        chain_id
+                    },
+                    None => {
+                        warn!("Skipping as nonce {:?} does not exist in DB on pending_action_events table", &event.nonce);
+                        continue
+                    }
+                }
+            }
+            Err(e) => {
+                error!("Error while querying DB for chain_id, error: {:?}", &e);
+                continue
+            }
+        };
+
         let chain_config = conf.evm_chains.iter().find(|a| a.chain_id == chain_id).unwrap();
         let chain_config = chain_config.clone();
-        let payload = event.attributes.iter().find(|a| a.key == "payload").map(|a| a.value.clone()).unwrap_or_default();
-        let payload_bytes = decode(strip_quotes(&payload.clone()))
-            .expect("Decoding failed");
-        let payload_hash = keccak256(&payload_bytes);
-        let payload_hash = encode_prefixed(payload_hash);
         // save corresponding evm event
-        save_contract_call_approved_events(chain_config, pg_pool.clone(), &payload_hash).await.context("save contract call approved event failed")?;
+        save_contract_call_approved_events(chain_config, pg_pool.clone(), &event.payload_hash).await.context("save contract call approved event failed")?;
     }
 
     Ok(())
+}
+
+fn should_save_call_contract_event(axelar_call_contract_event: &DbAxelarCallContractEvent) -> bool {
+    // TODO: check if nonce exist on pending_action_events table
+    // axelar_call_contract_event.nonce
+    return true
 }
 
 fn extract_events(response: JsonRpcResult, event_type: &str) -> Vec<Event> {
