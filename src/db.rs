@@ -1,9 +1,13 @@
 pub mod carbon_events;
+pub mod evm_events;
 
 use std::str::FromStr;
+use anyhow::Context;
 use serde::{Deserialize, Deserializer, Serialize};
 use sqlx::FromRow;
 use sqlx::types::{BigDecimal, Json};
+use chrono::{DateTime, Utc};
+use serde_json::{from_value, Value};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PayloadType {
@@ -19,38 +23,59 @@ pub enum PayloadType {
     UnpauseContract,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PendingActionType {
+    PendingRegisterTokenType = 0,
+    PendingDeregisterTokenType,
+    PendingDeployNativeTokenType,
+    PendingWithdrawAndExecuteType,
+    PendingWithdrawType,
+    PendingExecuteType,
+}
+
+// carbon
 #[derive(Debug, Clone, PartialEq, FromRow)]
-pub struct DbPayloadAcknowledgedEvent {
+pub struct DbPendingActionEvent {
     pub id: i32,
-    // reference payload_types (from carbon x/bridge/types/payload_encoding.go)
-    // RegisterToken = 0
-    // DeregisterToken = 1
-    // DeployToken = 2
-    // RegisterExecutable = 3
-    // DeregisterExecutable = 4
-    // Withdraw = 5
-    // ExecuteGateway = 6
-    // WithdrawAndExecute = 7
-    // PauseContract = 8
-    // UnpauseContract = 9
-    pub payload_type: i32,
+    pub connection_id: String,
+    pub bridge_id: String,
+    pub chain_id: String,
     pub nonce: BigDecimal,
-    pub payload: String, // hex string
+    pub pending_action_type: i32,
+    pub relay_details: Json<RelayDetails>,
+}
+
+// carbon
+#[derive(Debug, Clone, PartialEq)]
+pub struct BridgeAcknowledgedEvent {
+    pub id: i32,
+    pub bridge_id: String,
+    pub chain_id: String,
+    pub gateway_address: String,
+    pub nonce: BigDecimal,
+}
+
+// carbon
+#[derive(Debug, Clone, PartialEq)]
+pub struct BridgeRevertedEvent {
+    pub id: i32,
+    pub bridge_id: String,
+    pub chain_id: String,
+    pub gateway_address: String,
+    pub nonce: BigDecimal,
+}
+
+// carbon
+#[derive(Debug, Clone, PartialEq, FromRow)]
+pub struct DbAxelarCallContractEvent {
+    pub id: i32,
+    pub nonce: BigDecimal,
     pub payload_hash: String, // hex string
+    pub payload: String, // hex string
     pub payload_encoding: String,
 }
 
-#[derive(Debug, Clone, PartialEq, FromRow)]
-pub struct DbWithdrawTokenConfirmedEvent {
-    pub id: i32,
-    pub coin: Json<Coin>,
-    pub connection_id: String,
-    pub receiver: String,
-    pub relay_fee: Json<Coin>,
-    pub relayer_deposit_address: String,
-    pub sender: String,
-}
-
+// evm
 #[derive(Debug, Clone, PartialEq, FromRow)]
 pub struct DbContractCallApprovedEvent {
     pub id: i32,
@@ -64,6 +89,17 @@ pub struct DbContractCallApprovedEvent {
     pub source_tx_hash: String, // hex string
     pub source_event_index: BigDecimal, // Using BigDecimal to represent NUMERIC
     pub payload: String, // hex string
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RelayDetails {
+    pub fee_receiver_address: String,
+    pub fee_sender_address: String,
+    pub fee: Json<Coin>,
+    #[serde(with = "chrono::serde::ts_seconds_option")]
+    pub created_at: Option<DateTime<Utc>>,
+    #[serde(with = "chrono::serde::ts_seconds_option")]
+    pub sent_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -103,7 +139,40 @@ impl FromStr for PayloadType {
             "7" => Ok(PayloadType::WithdrawAndExecute),
             "8" => Ok(PayloadType::PauseContract),
             "9" => Ok(PayloadType::UnpauseContract),
-            _ => Err(()), // or Ok(PayloadType::Unknown) if you have an Unknown variant
+            _ => Err(()),
         }
+    }
+}
+
+impl PendingActionType {
+    pub fn to_i32(&self) -> i32 {
+        *self as i32
+    }
+}
+
+impl FromStr for PendingActionType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "0" => Ok(PendingActionType::PendingRegisterTokenType),
+            "1" => Ok(PendingActionType::PendingDeregisterTokenType),
+            "2" => Ok(PendingActionType::PendingDeployNativeTokenType),
+            "3" => Ok(PendingActionType::PendingWithdrawAndExecuteType),
+            "4" => Ok(PendingActionType::PendingWithdrawType),
+            "5" => Ok(PendingActionType::PendingExecuteType),
+            _ => Err(()),
+        }
+    }
+}
+
+impl DbPendingActionEvent {
+    pub fn get_relay_details(&self) -> RelayDetails {
+        let relay_details_value = serde_json::to_value(&self.relay_details).context("cannot parse relay_details")?;
+        let relay_details: RelayDetails = from_value(relay_details_value).context("cannot parse relay_details_value")?;
+        relay_details
+    }
+    pub fn get_relay_details_value(&self) -> Value {
+        serde_json::to_value(&self.relay_details).context("cannot parse relay_details")?
     }
 }

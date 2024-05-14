@@ -11,10 +11,13 @@ use sqlx::types::BigDecimal;
 use tracing::{debug, error, info, instrument};
 use url::Url;
 use crate::conf::Carbon;
-use crate::constants::events::{CARBON_BRIDGE_PENDING_ACTION_EVENT, CARBON_BRIDGE_ACKNOWLEDGE_EVENT, CARBON_BRIDGE_REVERT_EVENT, CARBON_PAYLOAD_SENT_EVENT};
-use crate::db::carbon_events::{save_bridge_acknowledgement_event, save_bridge_pending_action_event, save_bridge_revert_event, save_payload_event};
+use crate::constants::events::{CARBON_BRIDGE_PENDING_ACTION_EVENT, CARBON_BRIDGE_ACKNOWLEDGE_EVENT, CARBON_BRIDGE_REVERT_EVENT, CARBON_AXELAR_CALL_CONTRACT_EVENT};
+use crate::db::carbon_events::{save_bridge_acknowledgement_event, save_bridge_pending_action_event, delete_bridge_pending_action_event, save_axelar_call_contract_event};
 use crate::db::PayloadType;
-use crate::util::cosmos::{Event, WebSocketMessage};
+use crate::util::carbon::{parse_axelar_call_contract_event, parse_bridge_pending_action_event, parse_bridge_reverted_event};
+use crate::util::cosmos::{Event, extract_events, WebSocketMessage};
+use crate::util::fee::should_relay;
+use crate::util::strip_quotes;
 
 use crate::ws::{JSONWebSocketClient};
 
@@ -28,55 +31,42 @@ pub async fn init_ws(carbon_config: &Carbon, pg_pool: Arc<PgPool>) {
 
     // add WithdrawTokenConfirmedEvent subscription
     let pool = pg_pool.clone();
+    let carbon_config = carbon_config.clone();
     client.add_cosmos_subscription(
         "1".to_string(),
-        &format!("{} EXISTS", CARBON_BRIDGE_PENDING_ACTION_EVENT),
+        &format!("{}.nonce EXISTS", CARBON_BRIDGE_PENDING_ACTION_EVENT),
         Arc::new(Mutex::new(move |msg: String| {
             // Spawn an async task to handle the message
             let pool = pool.clone();
+            let carbon_config = carbon_config.clone();
             tokio::spawn(async move {
-                process_bridge_pending_action(msg, pool.clone()).await;
+                process_bridge_pending_action(&carbon_config, msg, pool.clone()).await;
             });
         })));
 
-    // add PayloadAcknowledgedEvent subscription
+    // add BridgeRevertEvent subscription
     let pool = pg_pool.clone();
     client.add_cosmos_subscription(
         "2".to_string(),
-        &format!("{} EXISTS", CARBON_BRIDGE_ACKNOWLEDGE_EVENT),
-        Arc::new(Mutex::new(move |msg: String| {
-            let pool = pool.clone();
-            // Spawn an async task to handle the message
-            tokio::spawn(async move {
-                process_bridge_acknowledgement_event(msg, pool.clone()).await;
-            });
-        })));
-
-    // add PayloadAcknowledgedEvent subscription
-    let pool = pg_pool.clone();
-    client.add_cosmos_subscription(
-        "3".to_string(),
         &format!("{} EXISTS", CARBON_BRIDGE_REVERT_EVENT),
         Arc::new(Mutex::new(move |msg: String| {
             let pool = pool.clone();
             // Spawn an async task to handle the message
             tokio::spawn(async move {
-                process_bridge_revert_event(msg, pool.clone()).await;
+                process_bridge_reverted_event(msg, pool.clone()).await;
             });
         })));
 
-    // add PayloadAcknowledgedEvent subscription
+    // add AxelarCallContractEvent subscription
     let pool = pg_pool.clone();
-    let carbon_config = carbon_config.clone();
     client.add_cosmos_subscription(
-        "4".to_string(),
-        &format!("{} EXISTS", CARBON_PAYLOAD_SENT_EVENT),
+        "3".to_string(),
+        &format!("{} EXISTS", CARBON_AXELAR_CALL_CONTRACT_EVENT),
         Arc::new(Mutex::new(move |msg: String| {
             let pool = pool.clone();
-            let carbon_config = carbon_config.clone();
             // Spawn an async task to handle the message
             tokio::spawn(async move {
-                process_payload_sent_event(msg, carbon_config.clone(), pool.clone()).await;
+                process_axelar_call_contract_event(msg, pool.clone()).await;
             });
         })));
 
@@ -86,58 +76,53 @@ pub async fn init_ws(carbon_config: &Carbon, pg_pool: Arc<PgPool>) {
     }
 }
 
-// Extracts relevant events from a JSON message
-fn extract_events(msg: &str, event_name: &str) -> Result<Vec<Event>> {
-    let query_response = serde_json::from_str::<WebSocketMessage>(msg)
-        .with_context(|| format!("Failed to parse JSON, provided string was: {}", msg))?;
 
-    let events = query_response.result.data.value.tx_result.result.events
-        .into_iter()
-        .filter(|e| e.event_type == event_name)
-        .collect();
-    Ok(events)
-}
 
-// process_bridge_pending_action processes the BridgePendingActionEvent
+// process_bridge_pending_action processes the PendingActionEvent
 #[instrument(skip_all)]
-async fn process_bridge_pending_action(msg: String, pg_pool: Arc<PgPool>) {
-    info!("Processing new BridgePendingActionEvent from Carbon");
+async fn process_bridge_pending_action(carbon_config: &Carbon, msg: String, pg_pool: Arc<PgPool>) {
+    info!("Processing new PendingActionEvent from Carbon");
     let events = extract_events(&msg, CARBON_BRIDGE_PENDING_ACTION_EVENT).unwrap();
     for event in events {
-        // TODO: process relay fee and see if fee makes sense
-        let relay_fee = event.attributes.iter().find(|a| a.key == "relay_fee").map(|a| a.value.clone()).unwrap_or_default();
-        let relay_fee = serde_json::from_str::<serde_json::Value>(&relay_fee).unwrap_or_default();
-        info!("relay_fee from Carbon {:?}", relay_fee);
-        save_bridge_pending_action_event(pg_pool.clone(), &event.clone()).await
+        let pending_action = parse_bridge_pending_action_event(event);
+
+        // check if relayer should relay (enough fees, etc.)
+        if !should_relay(pending_action.get_relay_details()) {
+            continue
+        }
+
+        // save to DB
+        save_bridge_pending_action_event(pg_pool.clone(), &pending_action.clone()).await;
+
+        // start the relay
+        // TODO: separate thread?
+        start_relay(carbon_config, pending_action.nonce).await;
     }
 }
 
-// process_bridge_acknowledgement_event processes the BridgeAcknowledgeEvent
-#[instrument(skip_all)]
-async fn process_bridge_acknowledgement_event(msg: String, pg_pool: Arc<PgPool>) {
-    info!("Processing new PayloadSentEvent from Carbon");
-    let events = extract_events(&msg, CARBON_BRIDGE_ACKNOWLEDGE_EVENT).unwrap();
-    for event in events {
-        save_bridge_acknowledgement_event(pg_pool.clone(), &event.clone()).await
-    }
+// starts the relay process on carbon which will release fees to relayer address
+async fn start_relay(carbon_config: &Carbon, nonce: BigDecimal) {
+    // TODO: implement start relay
 }
 
-// process_bridge_revert_event processes the BridgeRevertEvent
+// process_bridge_revert_event processes the BridgeRevertedEvent
 #[instrument(skip_all)]
-async fn process_bridge_revert_event(msg: String, pg_pool: Arc<PgPool>) {
-    info!("Processing new PayloadSentEvent from Carbon");
+async fn process_bridge_reverted_event(msg: String, pg_pool: Arc<PgPool>) {
+    info!("Processing new BridgeRevertedEvent from Carbon");
     let events = extract_events(&msg, CARBON_BRIDGE_REVERT_EVENT).unwrap();
     for event in events {
-        save_bridge_revert_event(pg_pool.clone(), &event.clone()).await
+        let bridge_reverted_event = parse_bridge_reverted_event(event);
+        delete_bridge_pending_action_event(pg_pool.clone(), bridge_reverted_event.nonce).await
     }
 }
 
-// process_payload_sent_event processes the PayloadSentEvent
+// process_axelar_call_contract_event processes the AxelarCallContractEvent
 #[instrument(skip_all)]
-async fn process_payload_sent_event(msg: String, carbon_config: Carbon, pg_pool: Arc<PgPool>) {
-    info!("Processing new PayloadSentEvent from Carbon");
-    let events = extract_events(&msg, CARBON_PAYLOAD_SENT_EVENT).unwrap();
+async fn process_axelar_call_contract_event(msg: String, pg_pool: Arc<PgPool>) {
+    info!("Processing new AxelarCallContractEvent from Carbon");
+    let events = extract_events(&msg, CARBON_AXELAR_CALL_CONTRACT_EVENT).unwrap();
     for event in events {
-        save_payload_event(&carbon_config, pg_pool.clone(), &event.clone()).await
+        let axelar_call_contract_event = parse_axelar_call_contract_event(event);
+        save_axelar_call_contract_event(pg_pool.clone(), &axelar_call_contract_event.clone()).await
     }
 }
