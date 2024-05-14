@@ -12,7 +12,7 @@ use tracing::{debug, error, info, instrument};
 use url::Url;
 use crate::conf::Carbon;
 use crate::constants::events::{CARBON_BRIDGE_PENDING_ACTION_EVENT, CARBON_BRIDGE_ACKNOWLEDGE_EVENT, CARBON_BRIDGE_REVERT_EVENT, CARBON_AXELAR_CALL_CONTRACT_EVENT};
-use crate::db::carbon_events::{save_bridge_acknowledgement_event, save_bridge_pending_action_event, delete_bridge_pending_action_event, save_axelar_call_contract_event};
+use crate::db::carbon_events::{save_bridge_pending_action_event, delete_bridge_pending_action_event, save_axelar_call_contract_event};
 use crate::db::PayloadType;
 use crate::util::carbon::{parse_axelar_call_contract_event, parse_bridge_pending_action_event, parse_bridge_reverted_event};
 use crate::util::cosmos::{Event, extract_events, WebSocketMessage};

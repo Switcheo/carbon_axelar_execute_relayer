@@ -1,6 +1,6 @@
 use std::str::FromStr;
 use std::sync::Arc;
-use anyhow::Context;
+use anyhow::{Context,Result};
 use ethers::utils::hex::{decode, encode_prefixed};
 use ethers::utils::keccak256;
 use sqlx::PgPool;
@@ -11,7 +11,7 @@ use crate::db::{DbAxelarCallContractEvent, DbPendingActionEvent, PayloadType};
 use crate::util::cosmos::Event;
 use crate::util::strip_quotes;
 
-pub async fn get_axelar_call_contract_event(pg_pool: &Arc<PgPool>, payload_hash: &String) -> anyhow::Result<Option<DbAxelarCallContractEvent>> {
+pub async fn get_axelar_call_contract_event(pg_pool: &Arc<PgPool>, payload_hash: &String) -> Result<Option<DbAxelarCallContractEvent>> {
     sqlx::query_as::<_, DbAxelarCallContractEvent>(
         "SELECT * FROM axelar_call_contract_events WHERE payload_hash = $1",
     )
@@ -19,12 +19,20 @@ pub async fn get_axelar_call_contract_event(pg_pool: &Arc<PgPool>, payload_hash:
         .fetch_optional(pg_pool.as_ref()).await.context("sql query error for axelar_call_contract_events")
 }
 
-pub async fn get_chain_id_for_nonce(pg_pool: &Arc<PgPool>, nonce: &BigDecimal) -> anyhow::Result<Option<String>> {
+pub async fn get_pending_action_by_nonce(pg_pool: &Arc<PgPool>, nonce: &BigDecimal) -> Result<Option<DbPendingActionEvent>> {
     let result = sqlx::query_as::<_, DbPendingActionEvent>(
         "SELECT * FROM pending_action_events WHERE nonce = $1",
     )
         .bind(nonce)
         .fetch_optional(pg_pool.as_ref()).await.context("sql query error for pending_action_events").await;
+    match result {
+        Some(event) => Ok(Some(event)),
+        None => Ok(None),
+    }
+}
+
+pub async fn get_chain_id_for_nonce(pg_pool: &Arc<PgPool>, nonce: &BigDecimal) -> Result<Option<String>> {
+    let result = get_pending_action_by_nonce(pg_pool, nonce).await;
     match result {
         Some(event) => Ok(Some(event.chain_id)),
         None => Ok(None),
