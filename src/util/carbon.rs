@@ -57,8 +57,8 @@ pub fn parse_axelar_call_contract_event(event: Event) -> DbAxelarCallContractEve
     let nonce = event.attributes.iter().find(|a| a.key == "nonce").map(|a| a.value.clone()).unwrap_or_default();
     let nonce = BigDecimal::from_str(strip_quotes(&nonce))
         .expect("Failed to parse nonce into BigDecimal");
-    let payload_encoding = event.attributes.iter().find(|a| a.key == "payload_encoding").map(|a| a.value.clone()).unwrap_or_default();
-    let payload_encoding = strip_quotes(&payload_encoding).to_string();
+    // let payload_encoding = event.attributes.iter().find(|a| a.key == "payload_encoding").map(|a| a.value.clone()).unwrap_or_default();
+    // let payload_encoding = strip_quotes(&payload_encoding).to_string();
     let payload = event.attributes.iter().find(|a| a.key == "payload").map(|a| a.value.clone()).unwrap_or_default();
     let payload = strip_quotes(&payload).to_string();
 
@@ -73,7 +73,7 @@ pub fn parse_axelar_call_contract_event(event: Event) -> DbAxelarCallContractEve
         nonce,
         payload_hash,
         payload,
-        payload_encoding,
+        payload_encoding: "evm_abi".to_string(),
     }
 }
 

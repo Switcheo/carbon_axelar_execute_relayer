@@ -101,8 +101,11 @@ async fn process_bridge_pending_action(carbon_config: &Carbon, msg: String, pg_p
 }
 
 // starts the relay process on carbon which will release fees to relayer address
-async fn start_relay(carbon_config: &Carbon, nonce: BigDecimal) {
+pub async fn start_relay(carbon_config: &Carbon, nonce: BigDecimal) {
     // TODO: implement start relay
+    // create relay tx
+
+    // broadcast
 }
 
 // process_bridge_revert_event processes the BridgeRevertedEvent

@@ -109,10 +109,17 @@ The way to resolve this is to manually call the cli to save the tx since it is m
 
 ### Commands
 
-#### Resync command
+#### Resync
 
 ```bash
-# resync from carbon's start block height to end block height
+# resync from carbon's start block height to end block height to populate missed events so that they can be relayed
 cargo run -- -vv sync-from 318371 318490
 
+```
+
+#### Start Relay
+
+```bash
+# start a relay on a nonce
+cargo run -- -vv start-relay 1
 ```
