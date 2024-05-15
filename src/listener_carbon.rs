@@ -1,25 +1,17 @@
-use std::str::FromStr;
 use std::sync::Arc;
-
-use anyhow::{Context, Result, Error};
-use ethers::utils::hex::{decode, encode_prefixed};
-use ethers::utils::keccak256;
 use futures::lock::Mutex;
-use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use sqlx::types::BigDecimal;
-use tracing::{debug, error, info, instrument};
+use tracing::{error, info, instrument};
 use url::Url;
-use crate::conf::Carbon;
-use crate::constants::events::{CARBON_BRIDGE_PENDING_ACTION_EVENT, CARBON_BRIDGE_ACKNOWLEDGE_EVENT, CARBON_BRIDGE_REVERT_EVENT, CARBON_AXELAR_CALL_CONTRACT_EVENT};
-use crate::db::carbon_events::{save_bridge_pending_action_event, delete_bridge_pending_action_event, save_axelar_call_contract_event};
-use crate::db::PayloadType;
-use crate::util::carbon::{parse_axelar_call_contract_event, parse_bridge_pending_action_event, parse_bridge_reverted_event};
-use crate::util::cosmos::{Event, extract_events, WebSocketMessage};
-use crate::util::fee::should_relay;
-use crate::util::strip_quotes;
 
-use crate::ws::{JSONWebSocketClient};
+use crate::conf::Carbon;
+use crate::constants::events::{CARBON_AXELAR_CALL_CONTRACT_EVENT, CARBON_BRIDGE_PENDING_ACTION_EVENT, CARBON_BRIDGE_REVERT_EVENT};
+use crate::db::carbon_events::{delete_bridge_pending_action_event, save_axelar_call_contract_event, save_bridge_pending_action_event};
+use crate::util::carbon::{parse_axelar_call_contract_event, parse_bridge_pending_action_event, parse_bridge_reverted_event};
+use crate::util::cosmos::{extract_events};
+use crate::util::fee::should_relay;
+use crate::ws::JSONWebSocketClient;
 
 #[instrument(name = "listener_carbon", skip_all)]
 pub async fn init_ws(carbon_config: &Carbon, pg_pool: Arc<PgPool>) {
@@ -102,6 +94,7 @@ async fn process_bridge_pending_action(carbon_config: &Carbon, msg: String, pg_p
 
 // starts the relay process on carbon which will release fees to relayer address
 pub async fn start_relay(carbon_config: &Carbon, nonce: BigDecimal) {
+    info!("Starting relay on {:?} for nonce {:?}", &carbon_config.rpc_url, &nonce)
     // TODO: implement start relay
     // create relay tx
 

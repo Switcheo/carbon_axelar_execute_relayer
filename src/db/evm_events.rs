@@ -1,11 +1,9 @@
 use std::str::FromStr;
 use std::sync::Arc;
-use anyhow::Context;
 use sqlx::PgPool;
 use sqlx::types::BigDecimal;
 use tracing::{error, info, warn};
 use crate::conf::Chain;
-use crate::db::{DbAxelarCallContractEvent, PayloadType};
 use crate::db::carbon_events::get_axelar_call_contract_event;
 use crate::util::evm::ContractCallApprovedEvent;
 

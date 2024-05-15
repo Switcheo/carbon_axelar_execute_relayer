@@ -3,19 +3,17 @@ use crate::conf::{AppConfig, Chain};
 use anyhow::{Context, Result};
 use ethers::addressbook::Address;
 use ethers::prelude::{EthEvent, Filter, H256, Http, Middleware, Provider, ValueOrArray};
-use ethers::utils::hex::{decode, encode_prefixed};
-use ethers::utils::keccak256;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use tracing::{error, info, instrument, warn};
 use crate::constants::events::{CARBON_AXELAR_CALL_CONTRACT_EVENT, CARBON_BRIDGE_PENDING_ACTION_EVENT};
-use crate::db::carbon_events::{get_axelar_call_contract_event, get_chain_id_for_nonce, get_pending_action_by_nonce, save_axelar_call_contract_event, save_bridge_pending_action_event};
+use crate::db::carbon_events::{get_chain_id_for_nonce, get_pending_action_by_nonce, save_axelar_call_contract_event, save_bridge_pending_action_event};
 use crate::db::DbAxelarCallContractEvent;
-use crate::listener_evm::{ContractCallApprovedEvent, save_call_contract_approved_event};
+use crate::db::evm_events::save_call_contract_approved_event;
 use crate::util::carbon::{parse_axelar_call_contract_event, parse_bridge_pending_action_event};
 use crate::util::cosmos::{Event, TxResultInner};
+use crate::util::evm::ContractCallApprovedEvent;
 use crate::util::fee::should_relay;
-use crate::util::strip_quotes;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct JsonRpcResult {
@@ -51,7 +49,7 @@ pub async fn sync_block_range(conf: AppConfig, pg_pool: Arc<PgPool>, start_heigh
     info!("Found {} transactions with {}", response.result.total_count, CARBON_BRIDGE_PENDING_ACTION_EVENT);
     // extract all events and save events
     for event in extract_events(response, CARBON_BRIDGE_PENDING_ACTION_EVENT) {
-        let bridge_pending_action_event = parse_bridge_pending_action_event(*event.clone());
+        let bridge_pending_action_event = parse_bridge_pending_action_event(event.clone());
 
         // check if relayer should relay (enough fees, etc.)
         if !should_relay(bridge_pending_action_event.get_relay_details()) {
@@ -69,10 +67,10 @@ pub async fn sync_block_range(conf: AppConfig, pg_pool: Arc<PgPool>, start_heigh
     // extract all events and save events
     for event in extract_events(response, CARBON_AXELAR_CALL_CONTRACT_EVENT) {
         let axelar_call_contract_event = parse_axelar_call_contract_event(event);
-        if !should_save_call_contract_event(pg_pool.clone(), &axelar_call_contract_event) {
+        if !should_save_call_contract_event(pg_pool.clone(), &axelar_call_contract_event).await {
             continue
         }
-        save_axelar_call_contract_event(pg_pool.clone(), *axelar_call_contract_event.clone()).await;
+        save_axelar_call_contract_event(pg_pool.clone(), &axelar_call_contract_event.clone()).await;
         saved_call_contract_events.push(axelar_call_contract_event.clone())
     }
 
@@ -112,8 +110,9 @@ async fn should_save_call_contract_event(pg_pool: Arc<PgPool>, axelar_call_contr
     // check if nonce exist on pending_action_events table
     let result = get_pending_action_by_nonce(&pg_pool, &axelar_call_contract_event.nonce).await;
     match result {
-        Some(_) => true,
-        None => false,
+        Ok(Some(_)) => true,
+        Ok(None) => false,
+        Err(_) => false, // Handle the error case by returning false
     }
 }
 

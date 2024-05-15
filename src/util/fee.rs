@@ -1,6 +1,3 @@
-use std::sync::Arc;
-use sqlx::PgPool;
-use sqlx::types::BigDecimal;
 use tracing::info;
 use crate::db::RelayDetails;
 

@@ -1,19 +1,17 @@
-use std::str::FromStr;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use ethers::{
     contract::EthEvent,
-    core::types::{Address, Filter, H256, U256},
+    core::types::{Address, Filter, H256},
     prelude::*,
     providers::{Provider, Ws},
 };
 use sqlx::PgPool;
-use sqlx::types::BigDecimal;
-use tracing::{error, info, instrument, warn};
+use tracing::{error, info, instrument};
 
 use crate::conf::Chain;
-use crate::db::{DbAxelarCallContractEvent, DbWithdrawTokenConfirmedEvent, PayloadType};
+use crate::constants::events::EVM_CONTRACT_CALL_APPROVED_EVENT;
 use crate::db::evm_events::save_call_contract_approved_event;
 use crate::util::evm::ContractCallApprovedEvent;
 
@@ -53,7 +51,7 @@ async fn init_ws(chain_config: Chain, pg_pool: Arc<PgPool>) -> Result<()> {
     );
     let mut events = event.subscribe().await?.take(5);
 
-    info!("Starting to watch {:?} for ContractCallApprovedEvent", &chain_config.chain_id);
+    info!("Starting to watch {:?} for {:?}", &chain_config.chain_id, EVM_CONTRACT_CALL_APPROVED_EVENT);
     while let Some(log) = events.next().await {
         // TODO: extract to separate thread?
         match log {

@@ -2,7 +2,6 @@ pub mod carbon_events;
 pub mod evm_events;
 
 use std::str::FromStr;
-use anyhow::Context;
 use serde::{Deserialize, Deserializer, Serialize};
 use sqlx::FromRow;
 use sqlx::types::{BigDecimal, Json};
@@ -118,12 +117,6 @@ fn deserialize_amount<'de, D>(deserializer: D) -> Result<u64, D::Error>
     u64::from_str(&s).map_err(serde::de::Error::custom)
 }
 
-impl PayloadType {
-    pub fn to_i32(&self) -> i32 {
-        *self as i32
-    }
-}
-
 impl FromStr for PayloadType {
     type Err = ();
 
@@ -144,11 +137,11 @@ impl FromStr for PayloadType {
     }
 }
 
-impl PendingActionType {
-    pub fn to_i32(&self) -> i32 {
-        *self as i32
-    }
-}
+// impl PendingActionType {
+//     pub fn to_i32(&self) -> i32 {
+//         *self as i32
+//     }
+// }
 
 impl FromStr for PendingActionType {
     type Err = ();
@@ -168,11 +161,12 @@ impl FromStr for PendingActionType {
 
 impl DbPendingActionEvent {
     pub fn get_relay_details(&self) -> RelayDetails {
-        let relay_details_value = serde_json::to_value(&self.relay_details).context("cannot parse relay_details")?;
-        let relay_details: RelayDetails = from_value(relay_details_value).context("cannot parse relay_details_value")?;
+        let relay_details_value = serde_json::to_value(&self.relay_details).expect("cannot parse relay_details");
+        let relay_details: RelayDetails = from_value(relay_details_value).expect("cannot parse relay_details_value");
         relay_details
     }
+
     pub fn get_relay_details_value(&self) -> Value {
-        serde_json::to_value(&self.relay_details).context("cannot parse relay_details")?
+        serde_json::to_value(&self.relay_details).expect("cannot parse relay_details")
     }
 }

@@ -1,7 +1,7 @@
 use std::str::FromStr;
 use ethers::utils::hex::{decode, encode_prefixed};
 use ethers::utils::keccak256;
-use sqlx::types::{BigDecimal, Json, JsonValue};
+use sqlx::types::{BigDecimal, Json};
 use crate::db::{BridgeRevertedEvent, DbAxelarCallContractEvent, DbPendingActionEvent, RelayDetails};
 use crate::util::cosmos::Event;
 use crate::util::strip_quotes;
@@ -11,7 +11,7 @@ pub fn parse_bridge_pending_action_event(event: Event) -> DbPendingActionEvent {
     let connection_id = strip_quotes(&connection_id).to_string();
     let relay_details = event.attributes.iter().find(|a| a.key == "relay_details").map(|a| a.value.clone()).unwrap_or_default();
     let relay_details: RelayDetails = serde_json::from_str(&relay_details)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string()).expect("could not parse relay_details");
 
     let nonce = event.attributes.iter().find(|a| a.key == "nonce").map(|a| a.value.clone()).unwrap_or_default();
     let nonce = BigDecimal::from_str(strip_quotes(&nonce))

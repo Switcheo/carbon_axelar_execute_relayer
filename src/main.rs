@@ -138,7 +138,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Some(Commands::StartRelay { nonce }) => {
             // Call a function to handle the starting the relay
-            listener_carbon::start_relay(&conf.carbon.clone(), BigDecimal::from(*nonce)).await?;
+            listener_carbon::start_relay(&conf.carbon.clone(), BigDecimal::from(*nonce)).await;
         }
         None => {}
     }

@@ -1,5 +1,4 @@
 use cosmrs::proto::traits::Message;
-use cosmrs::tx::Msg;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, PartialEq, Message, Serialize, Deserialize)]
@@ -12,18 +11,18 @@ pub struct MsgStartRelay {
     pub pending_action_type: u64,
 }
 
-impl Msg for MsgStartRelay {
-    type Proto = Self;
-
-    fn to_proto(&self) -> Self::Proto {
-        self.clone()
-    }
-
-    fn from_proto(proto: Self::Proto) -> Self {
-        proto
-    }
-
-    fn type_url() -> String {
-        "/bridge.MsgStartRelay".to_string()
-    }
-}
+// impl Msg for MsgStartRelay {
+//     type Proto = Self;
+//
+//     fn to_proto(&self) -> Self::Proto {
+//         self.clone()
+//     }
+//
+//     fn from_proto(proto: Self::Proto) -> Self {
+//         proto
+//     }
+//
+//     fn type_url() -> String {
+//         "/bridge.MsgStartRelay".to_string()
+//     }
+// }
