@@ -123,3 +123,19 @@ cargo run -- -vv sync-from 318371 318490
 # start a relay on a nonce
 cargo run -- -vv start-relay 1
 ```
+
+## Generating protos
+
+Pre-req: install `buf` cli on your computer
+
+Note: `cd` into `proto` folder first before running buf
+
+```bash
+# update the proto dependencies in buf.yaml
+buf dep update
+
+# generate
+buf generate
+```
+
+

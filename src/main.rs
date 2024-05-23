@@ -19,6 +19,14 @@ mod tx_sync;
 mod constants;
 mod util;
 
+mod switcheo {
+    pub mod carbon {
+        pub mod bridge {
+            include!("../proto/gen/Switcheo.carbon.bridge.rs");
+        }
+    }
+}
+
 #[derive(Parser)]
 #[command(author = "Switcheo Labs Pte. Ltd.", name = "Carbon-Axelar Relayer", version, about = "Carbon-Axelar Relayer", long_about = None)]
 struct Cli {

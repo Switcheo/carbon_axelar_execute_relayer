@@ -1,0 +1,29 @@
+syntax = "proto3";
+package Switcheo.carbon.bridge;
+
+import "gogoproto/gogo.proto";
+
+option go_package = "github.com/Switcheo/carbon/x/bridge/types";
+
+// Params defines the parameters for the module.
+message Params {
+  option (gogoproto.goproto_stringer) = false;
+  // axelar_ibc_channel the IBC channel that currently connects to axelar
+  // blockchain
+  string axelar_ibc_channel = 1;
+  // ibc_timeout_height_offset specifies the number of blocks to be added to the
+  // current block height of the destination chain to determine the timeout
+  // height for IBC messages. This offset is used to calculate the block height
+  // on the destination chain at which the message will timeout if not
+  // processed. For example, an offset of 200 means that the message will
+  // timeout if it is not relayed and processed within 200 blocks from the
+  // current height of the destination chain.
+  uint64 ibc_timeout_height_offset = 2;
+  // relay_whitelist_duration specifies the number of blocks before a relay can
+  // be started by any relayer. Prior to this duration, only the whitelisted
+  // relayers can start the relay.
+  int64 relay_whitelist_duration = 3;
+  // relay_expiry_duration specifies the number of blocks after which a relay
+  // that has not been started will be pruned from the store
+  int64 relay_expiry_duration = 4;
+}

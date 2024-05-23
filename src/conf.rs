@@ -19,12 +19,14 @@ pub struct AppConfig {
 #[derive(Clone, Debug, Deserialize)]
 #[allow(unused)]
 pub struct Carbon {
-    pub relay_admin_payloads: bool,
-    pub relay_user_payloads: bool,
+    pub chain_id: String,
+    pub axelar_bridge_id: String,
     pub rpc_url: String,
+    pub rest_url: String,
     pub ws_url: String,
     pub relayer_deposit_address: String,
-    pub axelar_bridge_id: String,
+    pub relayer_private_key: String,
+    pub account_prefix: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]

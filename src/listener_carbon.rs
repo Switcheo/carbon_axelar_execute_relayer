@@ -2,6 +2,7 @@ use std::sync::Arc;
 use futures::lock::Mutex;
 use sqlx::PgPool;
 use sqlx::types::BigDecimal;
+use num_traits::ToPrimitive;
 use tracing::{error, info, instrument};
 use url::Url;
 
@@ -9,6 +10,7 @@ use crate::conf::Carbon;
 use crate::constants::events::{CARBON_AXELAR_CALL_CONTRACT_EVENT, CARBON_BRIDGE_PENDING_ACTION_EVENT, CARBON_BRIDGE_REVERT_EVENT};
 use crate::db::carbon_events::{delete_bridge_pending_action_event, save_axelar_call_contract_event, save_bridge_pending_action_event};
 use crate::util::carbon::{parse_axelar_call_contract_event, parse_bridge_pending_action_event, parse_bridge_reverted_event};
+use crate::util::carbon_tx::send_msg_start_relay;
 use crate::util::cosmos::{extract_events};
 use crate::util::fee::should_relay;
 use crate::ws::JSONWebSocketClient;
@@ -94,9 +96,12 @@ async fn process_bridge_pending_action(carbon_config: &Carbon, msg: String, pg_p
 
 // starts the relay process on carbon which will release fees to relayer address
 pub async fn start_relay(carbon_config: &Carbon, nonce: BigDecimal) {
-    info!("Starting relay on {:?} for nonce {:?}", &carbon_config.rpc_url, &nonce)
+    info!("Starting relay on {:?} for nonce {:?}", &carbon_config.rpc_url, &nonce);
+
     // TODO: implement start relay
+    let nonce = nonce.to_u64().expect("could not convert nonce to u64");
     // create relay tx
+    send_msg_start_relay(carbon_config.clone(), nonce, 1).await.expect("send message failed");
 
     // broadcast
 }
