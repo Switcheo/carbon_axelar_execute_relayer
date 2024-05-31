@@ -17,7 +17,7 @@ use crate::ws::JSONWebSocketClient;
 
 #[instrument(name = "listener_carbon", skip_all)]
 pub async fn init_ws(carbon_config: &Carbon, pg_pool: Arc<PgPool>) {
-    info!("Initializing WS for Carbon. Watching {:?} on {:?} for events", &carbon_config.relayer_deposit_address, &carbon_config.ws_url);
+    info!("Initializing WS for Carbon. Watching {:?} on {:?} for events", &carbon_config.relayer_address, &carbon_config.ws_url);
     let url = Url::parse(&carbon_config.ws_url).expect(&format!("Invalid WS URL {:?}", &carbon_config.ws_url));
 
     // create new client

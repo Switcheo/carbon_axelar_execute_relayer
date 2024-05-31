@@ -3,18 +3,22 @@
 pg_url = "postgresql://localhost:5432/carbon_axelar_execute_relayer"
 
 [carbon]
+# the chain id of carbon chain e.g. carbon-1
+chain_id = "carbon-localhost"
+# account prefix
+account_prefix = "tswth"
 # bridge id constant specified on carbon
-axelar_bridge_id = "axelar"
-# specifies whether admin payloads are relayed for free
-relay_admin_payloads = true
-# specifies whether user payloads are relayed at a cost
-relay_user_payloads = true
+axelar_bridge_id = "4"
 # carbon's TM RPC URL
 rpc_url = "http://localhost:26657"
+# carbon's LIGHT CLIENT REST URL
+rest_url = "http://localhost:1317"
 # carbon's WS URL
 ws_url = "ws://localhost:26657/websocket"
 # relayer deposit address on carbon we should watch for
-relayer_deposit_address = "tswth19cwu2rnstsntezuk23tcf0kq0lu9fc4rjz7085"
+relayer_address = "tswth1734770tk39nrhfl5y8uyhfpu45n2a7r9ua22a2"
+# mnemonic key of relayer address on carbon to receive fees and start relays
+relayer_mnemonic = "<mnemonic>"
 
 [[evm_chain]]
 # chain id should be the same as what is found on carbon's connection

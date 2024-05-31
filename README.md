@@ -3,7 +3,7 @@
 The purpose of this relayer is to facilitate execution to external chain on Carbon-Axelar bridge.
 e.g. withdrawals, or any external executions
 
-## How it works (new):
+## How it works:
 - Watch `Switcheo.carbon.bridge.NewPendingActionEvent` from Carbon
 - Check if fees are profitable for relay (See below)
 - If profitable, save `Switcheo.carbon.bridge.NewPendingActionEvent` record in DB with its nonce
@@ -15,9 +15,10 @@ e.g. withdrawals, or any external executions
   - check `is_contract_call_approved` to see if it's already executed
   - execute to the external blockchain to process the withdrawal or GMP
 
+Note: relayer needs to be whitelisted on carbon
+
 TODO:
 - [ ] proper fee conversion
-- [ ] rebroadcast from cli
 
 ## Setup
 

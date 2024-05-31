@@ -24,7 +24,7 @@ pub struct Carbon {
     pub rpc_url: String,
     pub rest_url: String,
     pub ws_url: String,
-    pub relayer_deposit_address: String,
+    pub relayer_address: String,
     pub relayer_mnemonic: String,
     pub account_prefix: String,
 }
