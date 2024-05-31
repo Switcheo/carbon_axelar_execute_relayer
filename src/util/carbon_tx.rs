@@ -39,24 +39,24 @@ pub async fn send_msg_start_relay(
 
     let signer_info = SignerInfo::single_direct(Some(sender_public_key.into()), sequence);
 
-    // Set hard-coded gas values
+    // set hard-coded gas values into auth_info
     let fee_coin = Coin::new(100000000, "swth").expect("unable to parse coin");
     let default_gas: u64 = 1000000000;
     let gas_multiplier: f64 = 1.2;
     let adjusted_gas = (default_gas as f64 * gas_multiplier) as u64;
     let auth_info = signer_info.clone().auth_info(Fee::from_amount_and_gas(fee_coin.clone(), adjusted_gas));
 
-
     // add timeout height
     let latest_block_height = get_latest_block_height(&conf.rpc_url).await?;
     let timeout_height = latest_block_height + 100; // Set timeout height to current height + 100
     let timeout_height = Height::try_from(timeout_height)?;
 
-
+    // create tx
     let tx_body = tx::BodyBuilder::new().msg(msg_start_relay).timeout_height(timeout_height).finish();
     let sign_doc = SignDoc::new(&tx_body, &auth_info, &chain_id, account_number).expect("signdoc failed");
     let tx_signed = sign_doc.sign(&sender_private_key).expect("signing failed");
     let tx_bytes = tx_signed.to_bytes().expect("to_bytes failed");
 
+    // send tx
     send_transaction(&conf.rest_url, tx_bytes).await
 }

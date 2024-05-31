@@ -44,7 +44,7 @@ pub async fn sync_block_range(conf: AppConfig, pg_pool: Arc<PgPool>, start_heigh
     info!("Syncing {:?} from blocks {} to {}", &conf.carbon.rpc_url, start_height, end_height);
 
     // Find and save CARBON_BRIDGE_PENDING_ACTION_EVENT event
-    let query = format!("{}.bridge_id CONTAINS '{}' AND tx.height>={} AND tx.height<={}", CARBON_BRIDGE_PENDING_ACTION_EVENT, &conf.carbon.axelar_bridge_id, start_height, end_height);
+    let query = format!("{}.connection_id CONTAINS '{}/' AND tx.height>={} AND tx.height<={}", CARBON_BRIDGE_PENDING_ACTION_EVENT, &conf.carbon.axelar_bridge_id, start_height, end_height);
     let response = abci_query(&conf.carbon.rpc_url, &query).await?;
     info!("Found {} transactions with {}", response.result.total_count, CARBON_BRIDGE_PENDING_ACTION_EVENT);
     // extract all events and save events
@@ -153,7 +153,7 @@ async fn save_contract_call_approved_events(chain_config: Chain, pg_pool: Arc<Pg
     let address = ValueOrArray::Value(address);
     // filter for contract_address (2nd indexed topic)
     let topic2 = H256::from(chain_config.carbon_axelar_gateway.clone().parse::<Address>().context("axelar_gateway_proxy parse failed")?);
-    // filter for contract_address (3rd indexed topic)
+    // filter for payload_hash (3rd indexed topic)
     let topic3 = payload_hash.parse::<H256>().context("payload_hash parse failed")?;
 
     // specify range of blocks to search

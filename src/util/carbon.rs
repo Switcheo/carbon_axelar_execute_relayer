@@ -1,5 +1,7 @@
 use std::str::FromStr;
-use ethers::utils::hex::{decode, encode_prefixed};
+use base64::Engine;
+use base64::engine::general_purpose;
+use ethers::utils::hex::{encode_prefixed};
 use ethers::utils::keccak256;
 use sqlx::types::{BigDecimal, Json};
 use crate::db::{BridgeRevertedEvent, DbAxelarCallContractEvent, DbPendingActionEvent, RelayDetails};
@@ -60,11 +62,11 @@ pub fn parse_axelar_call_contract_event(event: Event) -> DbAxelarCallContractEve
     // let payload_encoding = event.attributes.iter().find(|a| a.key == "payload_encoding").map(|a| a.value.clone()).unwrap_or_default();
     // let payload_encoding = strip_quotes(&payload_encoding).to_string();
     let payload = event.attributes.iter().find(|a| a.key == "payload").map(|a| a.value.clone()).unwrap_or_default();
-    let payload = strip_quotes(&payload).to_string();
+    let payload_base64 = strip_quotes(&payload).to_string();
+    let payload_bytes = general_purpose::STANDARD.decode(payload_base64).unwrap();
+    let payload_hex = encode_prefixed(&payload_bytes);
 
     // get payload_hash
-    let payload_bytes = decode(&payload.clone())
-        .expect("Decoding failed");
     let payload_hash = keccak256(&payload_bytes);
     let payload_hash = encode_prefixed(payload_hash);
 
@@ -72,7 +74,7 @@ pub fn parse_axelar_call_contract_event(event: Event) -> DbAxelarCallContractEve
         id: -1,
         nonce,
         payload_hash,
-        payload,
+        payload: payload_hex,
         payload_encoding: "evm_abi".to_string(),
     }
 }

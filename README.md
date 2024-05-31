@@ -4,9 +4,9 @@ The purpose of this relayer is to facilitate execution to external chain on Carb
 e.g. withdrawals, or any external executions
 
 ## How it works (new):
-- Watch `Switcheo.carbon.bridge.PendingActionEvent` from Carbon
+- Watch `Switcheo.carbon.bridge.NewPendingActionEvent` from Carbon
 - Check if fees are profitable for relay (See below)
-- If profitable, save `Switcheo.carbon.bridge.PendingActionEvent` record in DB with its nonce
+- If profitable, save `Switcheo.carbon.bridge.NewPendingActionEvent` record in DB with its nonce
 - Call StartRelay on Carbon
 - Watch for `BridgeRevertedEvent` (delete action and stop processing)
 - Watch and save `Switcheo.carbon.bridge.AxelarCallContractEvent` from Carbon where event.nonce matches nonce in DB
