@@ -1,20 +1,24 @@
 # Carbon Axelar Execute Relayer
 
-The purpose of this relayer is to facilitate execution to exeternal chain on Carbon-Axelar bridge.
+The purpose of this relayer is to facilitate execution to external chain on Carbon-Axelar bridge.
 e.g. withdrawals, or any external executions
 
 ## How it works:
-
-- Watch and save `Switcheo.carbon.bridge.PayloadAcknowledgedEvent` from Carbon where event.relayer_deposit_address == `relayer_deposit_address` in config
-- Watch and save `ContractCallApproved` event from external chain's Axelar Gateway if the `payload_hash` matches the `PayloadAcknowledgedEvent` record in the DB
+- Watch `Switcheo.carbon.bridge.NewPendingActionEvent` from Carbon
+- Check if fees are profitable for relay (See below)
+- If profitable, save `Switcheo.carbon.bridge.NewPendingActionEvent` record in DB with its nonce
+- Call StartRelay on Carbon
+- Watch for `BridgeRevertedEvent` (delete action and stop processing)
+- Watch and save `Switcheo.carbon.bridge.AxelarCallContractEvent` from Carbon where event.nonce matches nonce in DB
+- Watch and save `ContractCallApproved` event from external chain's Axelar Gateway if the `payload_hash` matches the `AxelarCallContractEvent` record in the DB
 - poll any new event saved,
   - check `is_contract_call_approved` to see if it's already executed
-  - if it is a withdrawal, check enough relay fees are sent by user 
   - execute to the external blockchain to process the withdrawal or GMP
+
+Note: relayer needs to be whitelisted on carbon
 
 TODO:
 - [ ] proper fee conversion
-- [ ] rebroadcast from cli
 
 ## Setup
 
@@ -36,9 +40,9 @@ cargo install sqlx-cli --no-default-features --features native-tls,postgres
 DATABASE_URL=postgresql://localhost:5432/carbon_axelar_execute_relayer
 ```
 
-#### Run migration
+#### Setup Database
 ```bash
-sqlx migrate run
+sqlx database setup
 ```
 
 #### Copy sample config
@@ -97,10 +101,34 @@ The way to resolve this is to manually call the cli to save the tx since it is m
 
 ### Commands
 
-#### Resync command
+#### Resync
 
 ```bash
-# resync from carbon's start block height to end block height
+# resync from carbon's start block height to end block height to populate missed events so that they can be relayed
 cargo run -- -vv sync-from 318371 318490
 
 ```
+
+#### Start Relay
+
+```bash
+# start a relay on a nonce
+cargo run -- -vv start-relay 1
+```
+
+## Generating protos
+
+**Pre-requisite: install `buf` cli on your computer**
+
+```bash
+# Note: `cd` into `proto` folder first before running buf
+cd proto
+
+# update the proto dependencies in buf.yaml
+buf dep update
+
+# generate
+buf generate
+```
+
+

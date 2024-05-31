@@ -1,7 +1,12 @@
 use std::str::FromStr;
-use serde::{Deserialize, Deserializer, Serialize};
+
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_json::{from_value, Value};
 use sqlx::FromRow;
 use sqlx::types::{BigDecimal, Json};
+
+pub mod carbon_events;
+pub mod evm_events;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PayloadType {
@@ -17,38 +22,59 @@ pub enum PayloadType {
     UnpauseContract,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PendingActionType {
+    PendingRegisterTokenType = 0,
+    PendingDeregisterTokenType,
+    PendingDeployNativeTokenType,
+    PendingWithdrawAndExecuteType,
+    PendingWithdrawType,
+    PendingExecuteType,
+}
+
+// carbon
 #[derive(Debug, Clone, PartialEq, FromRow)]
-pub struct DbPayloadAcknowledgedEvent {
+pub struct DbPendingActionEvent {
     pub id: i32,
-    // reference payload_types (from carbon x/bridge/types/payload_encoding.go)
-    // RegisterToken = 0
-    // DeregisterToken = 1
-    // DeployToken = 2
-    // RegisterExecutable = 3
-    // DeregisterExecutable = 4
-    // Withdraw = 5
-    // ExecuteGateway = 6
-    // WithdrawAndExecute = 7
-    // PauseContract = 8
-    // UnpauseContract = 9
-    pub payload_type: i32,
+    pub connection_id: String,
+    pub bridge_id: String,
+    pub chain_id: String,
     pub nonce: BigDecimal,
-    pub payload: String, // hex string
+    pub pending_action_type: i32,
+    pub relay_details: Json<RelayDetails>,
+}
+
+// carbon
+#[derive(Debug, Clone, PartialEq)]
+pub struct BridgeAcknowledgedEvent {
+    pub id: i32,
+    pub bridge_id: String,
+    pub chain_id: String,
+    pub gateway_address: String,
+    pub nonce: BigDecimal,
+}
+
+// carbon
+#[derive(Debug, Clone, PartialEq)]
+pub struct BridgeRevertedEvent {
+    pub id: i32,
+    pub bridge_id: String,
+    pub chain_id: String,
+    pub gateway_address: String,
+    pub nonce: BigDecimal,
+}
+
+// carbon
+#[derive(Debug, Clone, PartialEq, FromRow)]
+pub struct DbAxelarCallContractEvent {
+    pub id: i32,
+    pub nonce: BigDecimal,
     pub payload_hash: String, // hex string
+    pub payload: String, // hex string
     pub payload_encoding: String,
 }
 
-#[derive(Debug, Clone, PartialEq, FromRow)]
-pub struct DbWithdrawTokenConfirmedEvent {
-    pub id: i32,
-    pub coin: Json<Coin>,
-    pub connection_id: String,
-    pub receiver: String,
-    pub relay_fee: Json<Coin>,
-    pub relayer_deposit_address: String,
-    pub sender: String,
-}
-
+// evm
 #[derive(Debug, Clone, PartialEq, FromRow)]
 pub struct DbContractCallApprovedEvent {
     pub id: i32,
@@ -65,14 +91,26 @@ pub struct DbContractCallApprovedEvent {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RelayDetails {
+    pub fee_receiver_address: String,
+    pub fee_sender_address: String,
+    pub fee: Json<Coin>,
+    // #[serde(deserialize_with = "deserialize_str_as_u64")]
+    // pub block_created_at: u64,
+    // don't support as it can have null values, if we need this in the future, we can create a custom deserializer to deserialize this
+    // #[serde(deserialize_with = "deserialize_str_as_u64")]
+    // pub block_sent_at: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Coin {
     pub denom: String,
-    #[serde(deserialize_with = "deserialize_amount")]
+    #[serde(deserialize_with = "deserialize_str_as_u64", serialize_with = "serialize_u64_as_str")]
     pub amount: u64,
 }
 
 // Custom deserializer for the amount field to turn string into u64
-fn deserialize_amount<'de, D>(deserializer: D) -> Result<u64, D::Error>
+fn deserialize_str_as_u64<'de, D>(deserializer: D) -> Result<u64, D::Error>
     where
         D: Deserializer<'de>,
 {
@@ -80,10 +118,12 @@ fn deserialize_amount<'de, D>(deserializer: D) -> Result<u64, D::Error>
     u64::from_str(&s).map_err(serde::de::Error::custom)
 }
 
-impl PayloadType {
-    pub fn to_i32(&self) -> i32 {
-        *self as i32
-    }
+// Custom serializer for u64 fields represented as strings
+fn serialize_u64_as_str<S>(x: &u64, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+{
+    serializer.serialize_str(&x.to_string())
 }
 
 impl FromStr for PayloadType {
@@ -101,7 +141,41 @@ impl FromStr for PayloadType {
             "7" => Ok(PayloadType::WithdrawAndExecute),
             "8" => Ok(PayloadType::PauseContract),
             "9" => Ok(PayloadType::UnpauseContract),
-            _ => Err(()), // or Ok(PayloadType::Unknown) if you have an Unknown variant
+            _ => Err(()),
         }
+    }
+}
+
+// impl PendingActionType {
+//     pub fn to_i32(&self) -> i32 {
+//         *self as i32
+//     }
+// }
+
+impl FromStr for PendingActionType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "0" => Ok(PendingActionType::PendingRegisterTokenType),
+            "1" => Ok(PendingActionType::PendingDeregisterTokenType),
+            "2" => Ok(PendingActionType::PendingDeployNativeTokenType),
+            "3" => Ok(PendingActionType::PendingWithdrawAndExecuteType),
+            "4" => Ok(PendingActionType::PendingWithdrawType),
+            "5" => Ok(PendingActionType::PendingExecuteType),
+            _ => Err(()),
+        }
+    }
+}
+
+impl DbPendingActionEvent {
+    pub fn get_relay_details(&self) -> RelayDetails {
+        let relay_details_value = serde_json::to_value(&self.relay_details).expect("cannot parse relay_details");
+        let relay_details: RelayDetails = from_value(relay_details_value).expect("cannot parse relay_details_value");
+        relay_details
+    }
+
+    pub fn get_relay_details_value(&self) -> Value {
+        serde_json::to_value(&self.relay_details).expect("cannot parse relay_details")
     }
 }

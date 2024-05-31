@@ -1,15 +1,19 @@
 use std::sync::Arc;
 use crate::conf::{AppConfig, Chain};
-use crate::listener_carbon::{Event, TxResultInner, save_payload_event, save_withdraw_event, strip_quotes};
 use anyhow::{Context, Result};
 use ethers::addressbook::Address;
 use ethers::prelude::{EthEvent, Filter, H256, Http, Middleware, Provider, ValueOrArray};
-use ethers::utils::hex::{decode, encode_prefixed};
-use ethers::utils::keccak256;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use tracing::{info, instrument};
-use crate::listener_evm::{ContractCallApprovedEvent, save_call_contract_approved_event};
+use tracing::{error, info, instrument, warn};
+use crate::constants::events::{CARBON_AXELAR_CALL_CONTRACT_EVENT, CARBON_BRIDGE_PENDING_ACTION_EVENT};
+use crate::db::carbon_events::{get_chain_id_for_nonce, get_pending_action_by_nonce, save_axelar_call_contract_event, save_bridge_pending_action_event};
+use crate::db::DbAxelarCallContractEvent;
+use crate::db::evm_events::save_call_contract_approved_event;
+use crate::util::carbon::{parse_axelar_call_contract_event, parse_bridge_pending_action_event};
+use crate::util::cosmos::{Event, TxResultInner};
+use crate::util::evm::ContractCallApprovedEvent;
+use crate::util::fee::should_relay;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct JsonRpcResult {
@@ -39,42 +43,77 @@ pub struct TxResult {
 pub async fn sync_block_range(conf: AppConfig, pg_pool: Arc<PgPool>, start_height: u64, end_height: u64) -> Result<()> {
     info!("Syncing {:?} from blocks {} to {}", &conf.carbon.rpc_url, start_height, end_height);
 
-    // Find and save PayloadAcknowledgedEvent event
-    let query = format!("Switcheo.carbon.bridge.PayloadAcknowledgedEvent.bridge_id CONTAINS '{}' AND tx.height>={} AND tx.height<={}", &conf.carbon.axelar_bridge_id, start_height, end_height);
+    // Find and save CARBON_BRIDGE_PENDING_ACTION_EVENT event
+    let query = format!("{}.connection_id CONTAINS '{}/' AND tx.height>={} AND tx.height<={}", CARBON_BRIDGE_PENDING_ACTION_EVENT, &conf.carbon.axelar_bridge_id, start_height, end_height);
     let response = abci_query(&conf.carbon.rpc_url, &query).await?;
-    info!("Found {} transactions with PayloadAcknowledgedEvent", response.result.total_count);
+    info!("Found {} transactions with {}", response.result.total_count, CARBON_BRIDGE_PENDING_ACTION_EVENT);
     // extract all events and save events
-    let payload_events = extract_events(response, "Switcheo.carbon.bridge.PayloadAcknowledgedEvent");
-    for event in &payload_events {
-        save_payload_event(&conf.carbon, pg_pool.clone(), &event).await;
+    for event in extract_events(response, CARBON_BRIDGE_PENDING_ACTION_EVENT) {
+        let bridge_pending_action_event = parse_bridge_pending_action_event(event.clone());
+
+        // check if relayer should relay (enough fees, etc.)
+        if !should_relay(bridge_pending_action_event.get_relay_details()) {
+            continue
+        }
+
+        save_bridge_pending_action_event(pg_pool.clone(), &bridge_pending_action_event).await;
     }
 
-    // Find and save WithdrawTokenConfirmedEvent event
-    let query = format!("Switcheo.carbon.bridge.WithdrawTokenConfirmedEvent.relayer_deposit_address CONTAINS '{}' AND tx.height>={} AND tx.height<={}", &conf.carbon.relayer_deposit_address, start_height, end_height);
+    let mut saved_call_contract_events: Vec<DbAxelarCallContractEvent> = Vec::new();
+    // Find and save CARBON_AXELAR_CALL_CONTRACT_EVENT event
+    let query = format!("{}.nonce EXISTS AND tx.height>={} AND tx.height<={}", CARBON_AXELAR_CALL_CONTRACT_EVENT, start_height, end_height);
     let response = abci_query(&conf.carbon.rpc_url, &query).await?;
-    info!("Found {} transactions with WithdrawTokenConfirmedEvent", response.result.total_count);
+    info!("Found {} transactions with {}", response.result.total_count, CARBON_AXELAR_CALL_CONTRACT_EVENT);
     // extract all events and save events
-    for event in extract_events(response, "Switcheo.carbon.bridge.WithdrawTokenConfirmedEvent") {
-        save_withdraw_event(pg_pool.clone(), &event.clone()).await;
+    for event in extract_events(response, CARBON_AXELAR_CALL_CONTRACT_EVENT) {
+        let axelar_call_contract_event = parse_axelar_call_contract_event(event);
+        if !should_save_call_contract_event(pg_pool.clone(), &axelar_call_contract_event).await {
+            continue
+        }
+        save_axelar_call_contract_event(pg_pool.clone(), &axelar_call_contract_event.clone()).await;
+        saved_call_contract_events.push(axelar_call_contract_event.clone())
     }
 
     // Find and save EVM event for each new payload_hash found
     // TODO: can be refactored and optimized to pass in multiple payload_hashes
-    for event in payload_events {
-        let chain_id = event.attributes.iter().find(|a| a.key == "chain_id").map(|a| a.value.clone()).unwrap_or_default();
-        let chain_id = strip_quotes(&chain_id);
+    for event in saved_call_contract_events {
+        let chain_id_result = get_chain_id_for_nonce(&pg_pool, &event.nonce).await;
+        let chain_id = match chain_id_result {
+            Ok(chain_id) => {
+                match chain_id {
+                    Some(chain_id) => {
+                        info!("Found matching event pending_action_events in DB with nonce: {:?}", &event.nonce);
+                        chain_id
+                    },
+                    None => {
+                        warn!("Skipping as nonce {:?} does not exist in DB on pending_action_events table", &event.nonce);
+                        continue
+                    }
+                }
+            }
+            Err(e) => {
+                error!("Error while querying DB for chain_id, error: {:?}", &e);
+                continue
+            }
+        };
+
         let chain_config = conf.evm_chains.iter().find(|a| a.chain_id == chain_id).unwrap();
         let chain_config = chain_config.clone();
-        let payload = event.attributes.iter().find(|a| a.key == "payload").map(|a| a.value.clone()).unwrap_or_default();
-        let payload_bytes = decode(crate::listener_carbon::strip_quotes(&payload.clone()))
-            .expect("Decoding failed");
-        let payload_hash = keccak256(&payload_bytes);
-        let payload_hash = encode_prefixed(payload_hash);
         // save corresponding evm event
-        save_contract_call_approved_events(chain_config, pg_pool.clone(), &payload_hash).await.context("save contract call approved event failed")?;
+        save_contract_call_approved_events(chain_config, pg_pool.clone(), &event.payload_hash).await.context("save contract call approved event failed")?;
     }
 
     Ok(())
+}
+
+async fn should_save_call_contract_event(pg_pool: Arc<PgPool>, axelar_call_contract_event: &DbAxelarCallContractEvent) -> bool {
+    // check if nonce exist on pending_action_events table
+    let result = get_pending_action_by_nonce(&pg_pool, &axelar_call_contract_event.nonce).await;
+    match result {
+        Ok(Some(_)) => true,
+        Ok(None) => false,
+        Err(_) => false, // Handle the error case by returning false
+    }
 }
 
 fn extract_events(response: JsonRpcResult, event_type: &str) -> Vec<Event> {
@@ -114,7 +153,7 @@ async fn save_contract_call_approved_events(chain_config: Chain, pg_pool: Arc<Pg
     let address = ValueOrArray::Value(address);
     // filter for contract_address (2nd indexed topic)
     let topic2 = H256::from(chain_config.carbon_axelar_gateway.clone().parse::<Address>().context("axelar_gateway_proxy parse failed")?);
-    // filter for contract_address (3rd indexed topic)
+    // filter for payload_hash (3rd indexed topic)
     let topic3 = payload_hash.parse::<H256>().context("payload_hash parse failed")?;
 
     // specify range of blocks to search

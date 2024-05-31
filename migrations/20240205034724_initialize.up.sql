@@ -1,27 +1,24 @@
 -- Add up migration script here
-CREATE TABLE payload_acknowledged_events
+CREATE TABLE pending_action_events
+(
+    id                      SERIAL      PRIMARY KEY,
+    connection_id           TEXT        NOT NULL CHECK (connection_id <> ''),
+    bridge_id               TEXT        NOT NULL CHECK (bridge_id <> ''),
+    chain_id                TEXT        NOT NULL CHECK (chain_id <> ''),
+    nonce                   NUMERIC     NOT NULL,
+    pending_action_type     INTEGER     NOT NULL,
+    relay_details           JSONB       NOT NULL
+);
+
+CREATE TABLE axelar_call_contract_events
 (
     id               SERIAL PRIMARY KEY,
-    bridge_id        TEXT    NOT NULL CHECK (bridge_id <> ''),
-    chain_id         TEXT    NOT NULL CHECK (chain_id <> ''),
-    payload_type     INTEGER NOT NULL,
     nonce            NUMERIC NOT NULL,
     payload_hash     TEXT    NOT NULL UNIQUE CHECK (payload_hash <> ''),
     payload          TEXT    NOT NULL CHECK (payload <> ''),
     payload_encoding TEXT    NOT NULL CHECK (payload_encoding <> '')
 );
 
-CREATE TABLE withdraw_token_confirmed_events
-(
-    id                      SERIAL PRIMARY KEY,
-    coin                    JSONB   NOT NULL,
-    connection_id           TEXT    NOT NULL CHECK (connection_id <> ''),
-    receiver                TEXT    NOT NULL CHECK (receiver <> ''),
-    relay_fee               JSONB   NOT NULL,
-    relayer_deposit_address TEXT    NOT NULL CHECK (relayer_deposit_address <> ''),
-    sender                  TEXT    NOT NULL CHECK (sender <> ''),
-    nonce                   NUMERIC NOT NULL
-);
 
 CREATE TABLE contract_call_approved_events
 (

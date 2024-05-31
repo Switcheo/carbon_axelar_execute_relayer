@@ -19,12 +19,14 @@ pub struct AppConfig {
 #[derive(Clone, Debug, Deserialize)]
 #[allow(unused)]
 pub struct Carbon {
-    pub relay_admin_payloads: bool,
-    pub relay_user_payloads: bool,
-    pub rpc_url: String,
-    pub ws_url: String,
-    pub relayer_deposit_address: String,
+    pub chain_id: String,
     pub axelar_bridge_id: String,
+    pub rpc_url: String,
+    pub rest_url: String,
+    pub ws_url: String,
+    pub relayer_address: String,
+    pub relayer_mnemonic: String,
+    pub account_prefix: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -59,3 +61,25 @@ impl AppConfig {
         c.try_deserialize()
     }
 }
+//
+// pub fn is_whitelisted_payload(carbon_config: &Carbon, payload_type: &PayloadType) -> bool {
+//     if carbon_config.relay_admin_payloads && matches!(payload_type,
+//             PayloadType::RegisterToken |
+//             PayloadType::DeregisterToken |
+//             PayloadType::DeployToken |
+//             PayloadType::RegisterExecutable |
+//             PayloadType::DeregisterExecutable |
+//             PayloadType::ExecuteGateway |
+//             PayloadType::WithdrawAndExecute |
+//             PayloadType::PauseContract |
+//             PayloadType::UnpauseContract
+//         ) {
+//         return true;
+//     }
+//     if carbon_config.relay_user_payloads && matches!(payload_type,
+//             PayloadType::Withdraw
+//         ) {
+//         return true;
+//     }
+//     return false;
+// }

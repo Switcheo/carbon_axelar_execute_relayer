@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use clap::{Parser, Subcommand};
 use sqlx::PgPool;
+use sqlx::types::BigDecimal;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
@@ -15,6 +16,16 @@ mod listener_evm;
 mod db;
 mod broadcaster_evm;
 mod tx_sync;
+mod constants;
+mod util;
+
+mod switcheo {
+    pub mod carbon {
+        pub mod bridge {
+            include!("../proto/gen/Switcheo.carbon.bridge.rs");
+        }
+    }
+}
 
 #[derive(Parser)]
 #[command(author = "Switcheo Labs Pte. Ltd.", name = "Carbon-Axelar Relayer", version, about = "Carbon-Axelar Relayer", long_about = None)]
@@ -50,6 +61,12 @@ enum Commands {
         #[arg(value_name = "END_HEIGHT")]
         end_height: u64,
     },
+    /// Start relay on Carbon for a nonce
+    StartRelay {
+        /// nonce to start relay
+        #[arg(value_name = "NONCE")]
+        nonce: u64,
+    }
     // Run
     // #[command(subcommand)]
     // query_command: Option<QueryCommands>,
@@ -126,6 +143,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(Commands::SyncFrom { start_height, end_height }) => {
             // Call a function to handle the sync logic for a range of block heights
             tx_sync::sync_block_range(conf.clone(), pg_pool.clone(), *start_height, *end_height).await?;
+        }
+        Some(Commands::StartRelay { nonce }) => {
+            // Call a function to handle the starting the relay
+            listener_carbon::start_relay(&conf.carbon.clone(), BigDecimal::from(*nonce)).await;
         }
         None => {}
     }

@@ -47,7 +47,7 @@ impl JSONWebSocketClient {
         }
     }
 
-    pub fn add_cosmos_subscription(&mut self, id: String, query: String, message_handler: MessageHandler) {
+    pub fn add_cosmos_subscription(&mut self, id: String, query: &str, message_handler: MessageHandler) {
         self.subscriptions.insert(id.clone(), Subscription {
             message: Message::Text(
                 json!({
