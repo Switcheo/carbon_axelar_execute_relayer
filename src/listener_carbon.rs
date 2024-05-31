@@ -97,13 +97,9 @@ async fn process_bridge_pending_action(carbon_config: &Carbon, msg: String, pg_p
 // starts the relay process on carbon which will release fees to relayer address
 pub async fn start_relay(carbon_config: &Carbon, nonce: BigDecimal) {
     info!("Starting relay on {:?} for nonce {:?}", &carbon_config.rpc_url, &nonce);
-
-    // TODO: implement start relay
+    // send relay tx
     let nonce = nonce.to_u64().expect("could not convert nonce to u64");
-    // create relay tx
-    send_msg_start_relay(carbon_config.clone(), nonce, 1).await.expect("send message failed");
-
-    // broadcast
+    send_msg_start_relay(carbon_config.clone(), nonce).await.expect("send message failed");
 }
 
 // process_bridge_revert_event processes the BridgeRevertedEvent

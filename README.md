@@ -1,16 +1,7 @@
 # Carbon Axelar Execute Relayer
 
-The purpose of this relayer is to facilitate execution to exeternal chain on Carbon-Axelar bridge.
+The purpose of this relayer is to facilitate execution to external chain on Carbon-Axelar bridge.
 e.g. withdrawals, or any external executions
-
-## How it works:
-
-- Watch and save `Switcheo.carbon.bridge.PayloadAcknowledgedEvent` from Carbon where event.relayer_deposit_address == `relayer_deposit_address` in config
-- Watch and save `ContractCallApproved` event from external chain's Axelar Gateway if the `payload_hash` matches the `PayloadAcknowledgedEvent` record in the DB
-- poll any new event saved,
-  - check `is_contract_call_approved` to see if it's already executed
-  - if it is a withdrawal, check enough relay fees are sent by user 
-  - execute to the external blockchain to process the withdrawal or GMP
 
 ## How it works (new):
 - Watch `Switcheo.carbon.bridge.PendingActionEvent` from Carbon
@@ -126,11 +117,12 @@ cargo run -- -vv start-relay 1
 
 ## Generating protos
 
-Pre-req: install `buf` cli on your computer
-
-Note: `cd` into `proto` folder first before running buf
+**Pre-requisite: install `buf` cli on your computer**
 
 ```bash
+# Note: `cd` into `proto` folder first before running buf
+cd proto
+
 # update the proto dependencies in buf.yaml
 buf dep update
 

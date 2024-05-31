@@ -351,11 +351,24 @@ dependencies = [
  "bs58",
  "hmac",
  "k256",
+ "once_cell",
+ "pbkdf2 0.12.2",
  "rand_core",
  "ripemd",
  "sha2 0.10.8",
  "subtle",
  "zeroize",
+]
+
+[[package]]
+name = "bip39"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93f2635620bf0b9d4576eb7bb9a38a55df78bd1205d26fa994b25911a69f212f"
+dependencies = [
+ "bitcoin_hashes",
+ "serde",
+ "unicode-normalization",
 ]
 
 [[package]]
@@ -372,6 +385,12 @@ name = "bit-vec"
 version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "349f9b6a179ed607305526ca489b34ad0a41aed5f7980fa90eb03160b69598fb"
+
+[[package]]
+name = "bitcoin_hashes"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "90064b8dee6815a6470d60bad07bbbaee885c0e12d04177138fa3291a01b7bc4"
 
 [[package]]
 name = "bitflags"
@@ -491,6 +510,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64 0.21.7",
+ "bip32",
+ "bip39",
  "bytes",
  "chrono",
  "clap",
@@ -501,12 +522,15 @@ dependencies = [
  "ethers",
  "futures",
  "hex",
+ "k256",
  "num-traits",
  "pbjson-types",
+ "pbkdf2 0.12.2",
  "prost",
  "prost-build",
  "prost-types",
  "reqwest",
+ "secp256k1",
  "serde",
  "serde_json",
  "sqlx",
@@ -3592,6 +3616,24 @@ dependencies = [
  "pkcs8",
  "subtle",
  "zeroize",
+]
+
+[[package]]
+name = "secp256k1"
+version = "0.29.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e0cc0f1cf93f4969faf3ea1c7d8a9faed25918d96affa959720823dfe86d4f3"
+dependencies = [
+ "secp256k1-sys",
+]
+
+[[package]]
+name = "secp256k1-sys"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1433bd67156263443f14d603720b082dd3121779323fce20cba2aa07b874bc1b"
+dependencies = [
+ "cc",
 ]
 
 [[package]]

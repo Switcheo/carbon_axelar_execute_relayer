@@ -3,14 +3,8 @@ use prost::Name;
 
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 pub struct MsgStartRelay {
-    /// Sender's address.
     pub relayer: String,
-
-    /// Recipient's address.
     pub nonce: u64,
-
-    /// Amount to send
-    pub pending_action_type: u64,
 }
 
 impl Name for crate::switcheo::carbon::bridge::MsgStartRelay {
@@ -37,7 +31,6 @@ impl TryFrom<&crate::switcheo::carbon::bridge::MsgStartRelay> for MsgStartRelay 
         Ok(MsgStartRelay {
             relayer: proto.relayer.parse()?,
             nonce: proto.nonce,
-            pending_action_type: proto.pending_action_type,
         })
     }
 }
@@ -53,7 +46,6 @@ impl From<&MsgStartRelay> for crate::switcheo::carbon::bridge::MsgStartRelay {
         crate::switcheo::carbon::bridge::MsgStartRelay {
             relayer: msg.relayer.to_string(),
             nonce: msg.nonce,
-            pending_action_type: msg.pending_action_type,
         }
     }
 }

@@ -519,8 +519,6 @@ pub struct MsgStartRelay {
     pub relayer: ::prost::alloc::string::String,
     #[prost(uint64, tag="2")]
     pub nonce: u64,
-    #[prost(uint64, tag="3")]
-    pub pending_action_type: u64,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

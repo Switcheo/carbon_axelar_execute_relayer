@@ -1,12 +1,12 @@
-pub mod carbon_events;
-pub mod evm_events;
-
 use std::str::FromStr;
-use serde::{Deserialize, Deserializer, Serialize};
+
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_json::{from_value, Value};
 use sqlx::FromRow;
 use sqlx::types::{BigDecimal, Json};
-use chrono::{DateTime, Utc};
-use serde_json::{from_value, Value};
+
+pub mod carbon_events;
+pub mod evm_events;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PayloadType {
@@ -95,26 +95,35 @@ pub struct RelayDetails {
     pub fee_receiver_address: String,
     pub fee_sender_address: String,
     pub fee: Json<Coin>,
-    #[serde(with = "chrono::serde::ts_seconds_option")]
-    pub created_at: Option<DateTime<Utc>>,
-    #[serde(with = "chrono::serde::ts_seconds_option")]
-    pub sent_at: Option<DateTime<Utc>>,
+    // #[serde(deserialize_with = "deserialize_str_as_u64")]
+    // pub block_created_at: u64,
+    // don't support as it can have null values, if we need this in the future, we can create a custom deserializer to deserialize this
+    // #[serde(deserialize_with = "deserialize_str_as_u64")]
+    // pub block_sent_at: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Coin {
     pub denom: String,
-    #[serde(deserialize_with = "deserialize_amount")]
+    #[serde(deserialize_with = "deserialize_str_as_u64", serialize_with = "serialize_u64_as_str")]
     pub amount: u64,
 }
 
 // Custom deserializer for the amount field to turn string into u64
-fn deserialize_amount<'de, D>(deserializer: D) -> Result<u64, D::Error>
+fn deserialize_str_as_u64<'de, D>(deserializer: D) -> Result<u64, D::Error>
     where
         D: Deserializer<'de>,
 {
     let s: String = Deserialize::deserialize(deserializer)?;
     u64::from_str(&s).map_err(serde::de::Error::custom)
+}
+
+// Custom serializer for u64 fields represented as strings
+fn serialize_u64_as_str<S>(x: &u64, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+{
+    serializer.serialize_str(&x.to_string())
 }
 
 impl FromStr for PayloadType {
