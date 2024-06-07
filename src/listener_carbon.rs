@@ -28,7 +28,7 @@ pub async fn init_ws(carbon_config: &Carbon, pg_pool: Arc<PgPool>) {
     let carbon_config = carbon_config.clone();
     client.add_cosmos_subscription(
         "1".to_string(),
-        &format!("{}.nonce EXISTS", CARBON_BRIDGE_PENDING_ACTION_EVENT),
+        &format!("{}.connection_id CONTAINS '{}/'", CARBON_BRIDGE_PENDING_ACTION_EVENT, &carbon_config.axelar_bridge_id),
         Arc::new(Mutex::new(move |msg: String| {
             // Spawn an async task to handle the message
             let pool = pool.clone();
@@ -80,8 +80,9 @@ async fn process_bridge_pending_action(carbon_config: &Carbon, msg: String, pg_p
     for event in events {
         let pending_action = parse_bridge_pending_action_event(event);
 
-        // check if relayer should relay (enough fees, etc.)
-        if !has_expired(&carbon_config, pending_action.get_relay_details()) {
+        // check if event has expired
+        if has_expired(&carbon_config, pending_action.get_relay_details()) {
+            info!("Skipping event with nonce {:?} as it has expired", pending_action.nonce.to_u64());
             continue
         }
 

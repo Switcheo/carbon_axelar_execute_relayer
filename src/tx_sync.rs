@@ -3,6 +3,7 @@ use crate::conf::{AppConfig, Chain};
 use anyhow::{Context, Result};
 use ethers::addressbook::Address;
 use ethers::prelude::{EthEvent, Filter, H256, Http, Middleware, Provider, ValueOrArray};
+use num_traits::ToPrimitive;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use tracing::{error, info, instrument, warn};
@@ -52,7 +53,9 @@ pub async fn sync_block_range(conf: AppConfig, pg_pool: Arc<PgPool>, start_heigh
         let bridge_pending_action_event = parse_bridge_pending_action_event(event.clone());
 
         // check if relay has expired
-        if !has_expired(&conf.carbon, bridge_pending_action_event.get_relay_details()) {
+        let relay_details = bridge_pending_action_event.get_relay_details();
+        if has_expired(&conf.carbon, relay_details.clone()) {
+            info!("Skipping event with nonce {:?} as it has expired by {:?}", bridge_pending_action_event.nonce.to_u64(), relay_details.get_expiry_duration());
             continue
         }
 

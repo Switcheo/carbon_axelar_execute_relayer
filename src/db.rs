@@ -1,10 +1,13 @@
 use std::str::FromStr;
+use chrono::{DateTime, Duration, Utc};
+use pbjson_types::Timestamp;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{from_value, Value};
 use sqlx::FromRow;
 use sqlx::types::{BigDecimal, Json, JsonValue};
 use tracing::info;
+use crate::util::datetime::{time_difference_str, timestamp_to_datetime};
 
 pub mod carbon_events;
 pub mod evm_events;
@@ -97,8 +100,7 @@ pub struct RelayDetails {
     pub fee_receiver_address: String,
     pub fee_sender_address: String,
     pub fee: Json<Coin>,
-    #[serde(deserialize_with = "deserialize_str_as_u64")]
-    pub expiry_block_time: u64,
+    pub expiry_block_time: pbjson_types::Timestamp,
     // don't support as it can have null values, if we need this in the future, we can create a custom deserializer to deserialize this
     // #[serde(deserialize_with = "deserialize_str_as_u64")]
     // pub created_at: Option<u64>,
@@ -184,7 +186,16 @@ impl DbPendingActionEvent {
 
 impl RelayDetails {
     pub fn has_expired(&self) -> bool {
-        info!("expiry_block_time: {:?}", self.expiry_block_time);
-        return false
+        let expiry_time = timestamp_to_datetime(&self.expiry_block_time);
+        let current_time = Utc::now();
+        current_time > expiry_time
+    }
+
+    pub fn get_expiry_duration(&self) -> String {
+        let expiry_time = timestamp_to_datetime(&self.expiry_block_time);
+        let current_time = Utc::now();
+        let time_difference = current_time - expiry_time;
+        time_difference_str(time_difference)
     }
 }
+
