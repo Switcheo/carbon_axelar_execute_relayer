@@ -2,6 +2,7 @@ syntax = "proto3";
 package Switcheo.carbon.bridge;
 
 import "gogoproto/gogo.proto";
+import "google/protobuf/duration.proto";
 
 option go_package = "github.com/Switcheo/carbon/x/bridge/types";
 
@@ -22,8 +23,10 @@ message Params {
   // relay_whitelist_duration specifies the number of blocks before a relay can
   // be started by any relayer. Prior to this duration, only the whitelisted
   // relayers can start the relay.
-  int64 relay_whitelist_duration = 3;
-  // relay_expiry_duration specifies the number of blocks after which a relay
-  // that has not been started will be pruned from the store
-  int64 relay_expiry_duration = 4;
+  google.protobuf.Duration relay_whitelist_duration = 3
+      [ (gogoproto.stdduration) = true, (gogoproto.nullable) = false ];
+  // max_relay_expiry_duration specifies the number of blocks after which a
+  // relay that has not been started will be pruned from the store
+  google.protobuf.Duration max_relay_expiry_duration = 4
+      [ (gogoproto.stdduration) = true, (gogoproto.nullable) = false ];
 }

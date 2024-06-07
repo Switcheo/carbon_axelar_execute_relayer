@@ -6,6 +6,7 @@ use cosmrs::{Coin, tx};
 use cosmrs::tx::{Fee, Msg, SignDoc, SignerInfo};
 use bip32::{DerivationPath};
 use cosmrs::tendermint::block::Height;
+use prost_types::Any;
 use crate::conf::Carbon;
 use crate::util::carbon_msg::MsgStartRelay;
 use crate::util::cosmos::{get_account_info, get_latest_block_height, send_transaction};
@@ -16,7 +17,30 @@ pub async fn send_msg_start_relay(
     conf: Carbon,
     nonce: u64,
 ) -> Result<()> {
-    // Generate private key from mnemonic
+    // create msg
+    let msg_start_relay = MsgStartRelay {
+        relayer: conf.relayer_address.clone(),
+        nonce,
+    }
+        .to_any()
+        .unwrap();
+
+    // send msg as a tx
+    send_msg(conf, msg_start_relay).await
+}
+
+pub async fn send_msg(
+    conf: Carbon,
+    msg: impl Into<Any>
+) -> Result<()> {
+    let tx_bytes = create_signed_tx(&conf, msg).await?;
+
+    // send tx
+    send_transaction(&conf.rest_url, tx_bytes).await
+}
+
+async fn create_signed_tx(conf: &Carbon, msg: impl Into<Any> + Sized) -> Result<Vec<u8>> {
+// Generate private key from mnemonic
     let mnemonic = Mnemonic::parse(&conf.relayer_mnemonic)?;
 
     let seed = mnemonic.to_seed("");
@@ -27,13 +51,6 @@ pub async fn send_msg_start_relay(
     let sender_account_id = sender_public_key.account_id(&conf.account_prefix).unwrap();
 
     let (account_number, sequence) = get_account_info(&conf.rest_url, &sender_account_id.to_string()).await?;
-
-    let msg_start_relay = MsgStartRelay {
-        relayer: sender_account_id.clone().to_string(),
-        nonce,
-    }
-        .to_any()
-        .unwrap();
 
     let chain_id = conf.chain_id.parse().unwrap();
 
@@ -52,11 +69,9 @@ pub async fn send_msg_start_relay(
     let timeout_height = Height::try_from(timeout_height)?;
 
     // create tx
-    let tx_body = tx::BodyBuilder::new().msg(msg_start_relay).timeout_height(timeout_height).finish();
+    let tx_body = tx::BodyBuilder::new().msg(msg).timeout_height(timeout_height).finish();
     let sign_doc = SignDoc::new(&tx_body, &auth_info, &chain_id, account_number).expect("signdoc failed");
     let tx_signed = sign_doc.sign(&sender_private_key).expect("signing failed");
     let tx_bytes = tx_signed.to_bytes().expect("to_bytes failed");
-
-    // send tx
-    send_transaction(&conf.rest_url, tx_bytes).await
+    Ok(tx_bytes)
 }

@@ -12,7 +12,7 @@ use crate::db::carbon_events::{delete_bridge_pending_action_event, save_axelar_c
 use crate::util::carbon::{parse_axelar_call_contract_event, parse_bridge_pending_action_event, parse_bridge_reverted_event};
 use crate::util::carbon_tx::send_msg_start_relay;
 use crate::util::cosmos::{extract_events};
-use crate::util::fee::should_relay;
+use crate::util::fee::{has_expired, should_relay};
 use crate::ws::JSONWebSocketClient;
 
 #[instrument(name = "listener_carbon", skip_all)]
@@ -81,7 +81,7 @@ async fn process_bridge_pending_action(carbon_config: &Carbon, msg: String, pg_p
         let pending_action = parse_bridge_pending_action_event(event);
 
         // check if relayer should relay (enough fees, etc.)
-        if !should_relay(pending_action.get_relay_details()) {
+        if !has_expired(&carbon_config, pending_action.get_relay_details()) {
             continue
         }
 
@@ -100,6 +100,8 @@ pub async fn start_relay(carbon_config: &Carbon, nonce: BigDecimal) {
     // send relay tx
     let nonce = nonce.to_u64().expect("could not convert nonce to u64");
     send_msg_start_relay(carbon_config.clone(), nonce).await.expect("send message failed");
+
+    //TODO: update db
 }
 
 // process_bridge_revert_event processes the BridgeRevertedEvent

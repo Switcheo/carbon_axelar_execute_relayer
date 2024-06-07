@@ -3,7 +3,8 @@ use std::str::FromStr;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{from_value, Value};
 use sqlx::FromRow;
-use sqlx::types::{BigDecimal, Json};
+use sqlx::types::{BigDecimal, Json, JsonValue};
+use tracing::info;
 
 pub mod carbon_events;
 pub mod evm_events;
@@ -41,7 +42,8 @@ pub struct DbPendingActionEvent {
     pub chain_id: String,
     pub nonce: BigDecimal,
     pub pending_action_type: i32,
-    pub relay_details: Json<RelayDetails>,
+    pub broadcast_status: String,
+    pub relay_details: JsonValue,
 }
 
 // carbon
@@ -95,11 +97,11 @@ pub struct RelayDetails {
     pub fee_receiver_address: String,
     pub fee_sender_address: String,
     pub fee: Json<Coin>,
-    // #[serde(deserialize_with = "deserialize_str_as_u64")]
-    // pub block_created_at: u64,
+    #[serde(deserialize_with = "deserialize_str_as_u64")]
+    pub expiry_block_time: u64,
     // don't support as it can have null values, if we need this in the future, we can create a custom deserializer to deserialize this
     // #[serde(deserialize_with = "deserialize_str_as_u64")]
-    // pub block_sent_at: Option<u64>,
+    // pub created_at: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -177,5 +179,12 @@ impl DbPendingActionEvent {
 
     pub fn get_relay_details_value(&self) -> Value {
         serde_json::to_value(&self.relay_details).expect("cannot parse relay_details")
+    }
+}
+
+impl RelayDetails {
+    pub fn has_expired(&self) -> bool {
+        info!("expiry_block_time: {:?}", self.expiry_block_time);
+        return false
     }
 }

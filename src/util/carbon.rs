@@ -12,7 +12,7 @@ pub fn parse_bridge_pending_action_event(event: Event) -> DbPendingActionEvent {
     let connection_id = event.attributes.iter().find(|a| a.key == "connection_id").map(|a| a.value.clone()).unwrap_or_default();
     let connection_id = strip_quotes(&connection_id).to_string();
     let relay_details = event.attributes.iter().find(|a| a.key == "relay_details").map(|a| a.value.clone()).unwrap_or_default();
-    let relay_details: RelayDetails = serde_json::from_str(&relay_details)
+    let relay_details = serde_json::from_str(&relay_details)
         .map_err(|e| e.to_string()).expect("could not parse relay_details");
 
     let nonce = event.attributes.iter().find(|a| a.key == "nonce").map(|a| a.value.clone()).unwrap_or_default();
@@ -31,7 +31,8 @@ pub fn parse_bridge_pending_action_event(event: Event) -> DbPendingActionEvent {
         chain_id,
         nonce,
         pending_action_type,
-        relay_details: Json(relay_details),
+        broadcast_status: "pending_broadcast".to_string(),
+        relay_details,
     }
 }
 

@@ -31,12 +31,13 @@ pub async fn get_chain_id_for_nonce(pg_pool: &Arc<PgPool>, nonce: &BigDecimal) -
 
 pub async fn save_bridge_pending_action_event(pg_pool: Arc<PgPool>, event: &DbPendingActionEvent) {
     let result = sqlx::query!(
-                        "INSERT INTO pending_action_events (connection_id, bridge_id, chain_id, nonce, pending_action_type, relay_details) VALUES ($1, $2, $3, $4, $5, $6)",
+                        "INSERT INTO pending_action_events (connection_id, bridge_id, chain_id, nonce, pending_action_type, broadcast_status, relay_details) VALUES ($1, $2, $3, $4, $5, $6, $7)",
                         event.connection_id,
                         event.bridge_id,
                         event.chain_id,
                         event.nonce,
                         event.pending_action_type,
+                        "pending_broadcast",
                         event.get_relay_details_value(),
                     )
         .execute(&*pg_pool)

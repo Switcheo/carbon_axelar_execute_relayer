@@ -18,6 +18,7 @@ mod broadcaster_evm;
 mod tx_sync;
 mod constants;
 mod util;
+mod broadcaster_carbon;
 
 mod switcheo {
     pub mod carbon {

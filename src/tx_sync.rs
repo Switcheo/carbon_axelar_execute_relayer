@@ -13,7 +13,7 @@ use crate::db::evm_events::save_call_contract_approved_event;
 use crate::util::carbon::{parse_axelar_call_contract_event, parse_bridge_pending_action_event};
 use crate::util::cosmos::{Event, TxResultInner};
 use crate::util::evm::ContractCallApprovedEvent;
-use crate::util::fee::should_relay;
+use crate::util::fee::{has_expired, should_relay};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct JsonRpcResult {
@@ -51,8 +51,8 @@ pub async fn sync_block_range(conf: AppConfig, pg_pool: Arc<PgPool>, start_heigh
     for event in extract_events(response, CARBON_BRIDGE_PENDING_ACTION_EVENT) {
         let bridge_pending_action_event = parse_bridge_pending_action_event(event.clone());
 
-        // check if relayer should relay (enough fees, etc.)
-        if !should_relay(bridge_pending_action_event.get_relay_details()) {
+        // check if relay has expired
+        if !has_expired(&conf.carbon, bridge_pending_action_event.get_relay_details()) {
             continue
         }
 

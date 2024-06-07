@@ -59,7 +59,7 @@ async fn poll_for_new_events(pool: Arc<PgPool>, channel_tx_map: HashMap<String, 
 // Checks the DB for events that can be executed and enqueues them into the broadcast channel
 async fn queue_new_events_for_broadcast(pool: &PgPool, channel_tx_map: HashMap<String,
     Sender<DbContractCallApprovedEvent>>) -> Result<()> {
-    // Implement the logic to check for new events
+    // check for new events
     debug!("Checking for new events...");
     let events: Vec<DbContractCallApprovedEvent> = sqlx::query_as!(
         DbContractCallApprovedEvent,

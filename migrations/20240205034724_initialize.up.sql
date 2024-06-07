@@ -7,6 +7,7 @@ CREATE TABLE pending_action_events
     chain_id                TEXT        NOT NULL CHECK (chain_id <> ''),
     nonce                   NUMERIC     NOT NULL,
     pending_action_type     INTEGER     NOT NULL,
+    broadcast_status        TEXT        NOT NULL CHECK (broadcast_status <> ''),
     relay_details           JSONB       NOT NULL
 );
 

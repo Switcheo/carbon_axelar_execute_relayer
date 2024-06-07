@@ -1,12 +1,40 @@
 use tracing::info;
+use crate::conf::Carbon;
 use crate::db::RelayDetails;
 
-pub fn should_relay(relay_details: RelayDetails) -> bool {
+// carbon
+#[derive(Debug, Clone, PartialEq)]
+pub struct FeeResponse {
+    pub withdraw: String,
+    pub register_token: String,
+    pub deregister_token: String,
+    pub deploy_native_token: String,
+    pub quoted_at: String,
+}
+
+pub fn should_relay(_carbon_config: &Carbon, relay_details: RelayDetails) -> bool {
     info!("relay_details from Carbon {:?}", relay_details);
     info!("fee: {:?}", relay_details.fee);
     // TODO: process relay fee and see if fee makes sense
+    // let fee = get_hydrogen_fee(carbon_config.clone(), relay_details);
+    // info!("hydrogen fee: {}", fee);
+
     return true
 }
+
+pub fn has_expired(_carbon_config: &Carbon, relay_details: RelayDetails) -> bool {
+    info!("relay_details from Carbon {:?}", relay_details);
+    info!("fee: {:?}", relay_details.fee);
+    // TODO: process relay fee and see if fee makes sense
+    // let fee = get_hydrogen_fee(carbon_config.clone(), relay_details);
+    // info!("hydrogen fee: {}", fee);
+
+    return relay_details.has_expired()
+}
+
+// pub fn get_hydrogen_fee(carbon_config: Carbon, relay_details: RelayDetails) -> FeeResponse {
+//
+// }
 
 //
 // async fn validate_withdraw(pg_pool: &Arc<PgPool>, nonce: &BigDecimal) -> anyhow::Result<()> {
