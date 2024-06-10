@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use crate::conf::{AppConfig, Chain};
+
 use anyhow::{Context, Result};
 use ethers::addressbook::Address;
 use ethers::prelude::{EthEvent, Filter, H256, Http, Middleware, Provider, ValueOrArray};
@@ -7,6 +7,8 @@ use num_traits::ToPrimitive;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use tracing::{error, info, instrument, warn};
+
+use crate::conf::{AppConfig, Chain};
 use crate::constants::events::{CARBON_AXELAR_CALL_CONTRACT_EVENT, CARBON_BRIDGE_PENDING_ACTION_EVENT};
 use crate::db::carbon_events::{get_chain_id_for_nonce, get_pending_action_by_nonce, save_axelar_call_contract_event, save_bridge_pending_action_event};
 use crate::db::DbAxelarCallContractEvent;
@@ -14,7 +16,6 @@ use crate::db::evm_events::save_call_contract_approved_event;
 use crate::util::carbon::{parse_axelar_call_contract_event, parse_bridge_pending_action_event};
 use crate::util::cosmos::{Event, TxResultInner};
 use crate::util::evm::ContractCallApprovedEvent;
-use crate::util::fee::{has_expired, should_relay};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct JsonRpcResult {
@@ -54,7 +55,7 @@ pub async fn sync_block_range(conf: AppConfig, pg_pool: Arc<PgPool>, start_heigh
 
         // check if relay has expired
         let relay_details = bridge_pending_action_event.get_relay_details();
-        if has_expired(&conf.carbon, relay_details.clone()) {
+        if bridge_pending_action_event.get_relay_details().has_expired() {
             info!("Skipping event with nonce {:?} as it has expired by {:?}", bridge_pending_action_event.nonce.to_u64(), relay_details.get_expiry_duration());
             continue
         }

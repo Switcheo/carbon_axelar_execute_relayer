@@ -22,16 +22,6 @@ pub fn should_relay(_carbon_config: &Carbon, relay_details: RelayDetails) -> boo
     return true
 }
 
-pub fn has_expired(_carbon_config: &Carbon, relay_details: RelayDetails) -> bool {
-    info!("relay_details from Carbon {:?}", relay_details);
-    info!("fee: {:?}", relay_details.fee);
-    // TODO: process relay fee and see if fee makes sense
-    // let fee = get_hydrogen_fee(carbon_config.clone(), relay_details);
-    // info!("hydrogen fee: {}", fee);
-
-    return relay_details.has_expired()
-}
-
 // pub fn get_hydrogen_fee(carbon_config: Carbon, relay_details: RelayDetails) -> FeeResponse {
 //
 // }

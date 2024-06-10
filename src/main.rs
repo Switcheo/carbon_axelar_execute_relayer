@@ -3,11 +3,11 @@ use std::sync::Arc;
 
 use clap::{Parser, Subcommand};
 use sqlx::PgPool;
-use sqlx::types::BigDecimal;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
 use conf::AppConfig;
+use crate::util::carbon_tx;
 
 mod conf;
 mod ws;
@@ -19,6 +19,7 @@ mod tx_sync;
 mod constants;
 mod util;
 mod broadcaster_carbon;
+mod tx_expire_nonces;
 
 mod switcheo {
     pub mod carbon {
@@ -113,10 +114,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Run commands based on user input
     match &cli.command {
         Some(Commands::Run) => {
+            // initialize broadcaster_carbon
+            let carbon_broadcaster = broadcaster_carbon::init_all(&conf.carbon).await;
+
             // Spawn listener_carbon::init_ws as a concurrent task
             let carbon_pg_pool = pg_pool.clone();
             let carbon_listen_task = tokio::spawn(async move {
-                listener_carbon::init_ws(&conf.carbon, carbon_pg_pool).await;
+                listener_carbon::init_ws(&conf.carbon, carbon_pg_pool, carbon_broadcaster).await;
             });
 
             // Spawn listener_evm::init_all_ws as a concurrent task
@@ -147,7 +151,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Some(Commands::StartRelay { nonce }) => {
             // Call a function to handle the starting the relay
-            listener_carbon::start_relay(&conf.carbon.clone(), BigDecimal::from(*nonce)).await;
+            let _ = carbon_tx::send_msg_start_relay(&conf.carbon.clone(), *nonce).await;
         }
         None => {}
     }

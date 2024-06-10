@@ -7,6 +7,7 @@ use cosmrs::tx::{Fee, Msg, SignDoc, SignerInfo};
 use bip32::{DerivationPath};
 use cosmrs::tendermint::block::Height;
 use prost_types::Any;
+use serde_json::Value;
 use crate::conf::Carbon;
 use crate::util::carbon_msg::MsgStartRelay;
 use crate::util::cosmos::{get_account_info, get_latest_block_height, send_transaction};
@@ -14,10 +15,9 @@ use crate::util::cosmos::{get_account_info, get_latest_block_height, send_transa
 const COSMOS_HD_PATH: &str = "m/44'/118'/0'/0/0";
 
 pub async fn send_msg_start_relay(
-    conf: Carbon,
+    conf: &Carbon,
     nonce: u64,
-) -> Result<()> {
-    // create msg
+) -> Result<Value> {
     let msg_start_relay = MsgStartRelay {
         relayer: conf.relayer_address.clone(),
         nonce,
@@ -25,21 +25,21 @@ pub async fn send_msg_start_relay(
         .to_any()
         .unwrap();
 
-    // send msg as a tx
-    send_msg(conf, msg_start_relay).await
+    // send msg via a tx
+    send_msg_via_tx(conf, msg_start_relay).await
 }
 
-pub async fn send_msg(
-    conf: Carbon,
+pub async fn send_msg_via_tx(
+    conf: &Carbon,
     msg: impl Into<Any>
-) -> Result<()> {
+) -> Result<Value> {
     let tx_bytes = create_signed_tx(&conf, msg).await?;
 
     // send tx
     send_transaction(&conf.rest_url, tx_bytes).await
 }
 
-async fn create_signed_tx(conf: &Carbon, msg: impl Into<Any> + Sized) -> Result<Vec<u8>> {
+async fn create_signed_tx(conf: &Carbon, msg: impl Into<Any>) -> Result<Vec<u8>> {
 // Generate private key from mnemonic
     let mnemonic = Mnemonic::parse(&conf.relayer_mnemonic)?;
 

@@ -1,10 +1,12 @@
 use std::str::FromStr;
+
 use base64::Engine;
 use base64::engine::general_purpose;
-use ethers::utils::hex::{encode_prefixed};
+use ethers::utils::hex::encode_prefixed;
 use ethers::utils::keccak256;
-use sqlx::types::{BigDecimal, Json};
-use crate::db::{BridgeRevertedEvent, DbAxelarCallContractEvent, DbPendingActionEvent, RelayDetails};
+use sqlx::types::BigDecimal;
+
+use crate::db::{BridgeRevertedEvent, DbAxelarCallContractEvent, DbPendingActionEvent};
 use crate::util::cosmos::Event;
 use crate::util::strip_quotes;
 

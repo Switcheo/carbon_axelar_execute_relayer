@@ -1,5 +1,11 @@
+use std::fmt::Debug;
 use cosmrs::{tx::Msg, ErrorReport, Result};
 use prost::Name;
+use prost_types::Any;
+
+pub trait IntoAny: Send + Debug {
+    fn into_any(self: Box<Self>) -> Any;
+}
 
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 pub struct MsgStartRelay {
@@ -47,5 +53,17 @@ impl From<&MsgStartRelay> for crate::switcheo::carbon::bridge::MsgStartRelay {
             relayer: msg.relayer.to_string(),
             nonce: msg.nonce,
         }
+    }
+}
+
+impl From<Box<MsgStartRelay>> for Any {
+    fn from(value: Box<MsgStartRelay>) -> Self {
+        (*value).to_any().unwrap()
+    }
+}
+
+impl IntoAny for MsgStartRelay {
+    fn into_any(self: Box<Self>) -> Any {
+        self.into()
     }
 }

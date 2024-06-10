@@ -3,20 +3,23 @@ use futures::lock::Mutex;
 use sqlx::PgPool;
 use sqlx::types::BigDecimal;
 use num_traits::ToPrimitive;
+use tokio::sync::mpsc::Sender;
+use tokio::sync::oneshot;
 use tracing::{error, info, instrument};
 use url::Url;
+use crate::broadcaster_carbon::BroadcastRequest;
 
 use crate::conf::Carbon;
 use crate::constants::events::{CARBON_AXELAR_CALL_CONTRACT_EVENT, CARBON_BRIDGE_PENDING_ACTION_EVENT, CARBON_BRIDGE_REVERT_EVENT};
 use crate::db::carbon_events::{delete_bridge_pending_action_event, save_axelar_call_contract_event, save_bridge_pending_action_event};
 use crate::util::carbon::{parse_axelar_call_contract_event, parse_bridge_pending_action_event, parse_bridge_reverted_event};
-use crate::util::carbon_tx::send_msg_start_relay;
+use crate::util::carbon_msg::MsgStartRelay;
 use crate::util::cosmos::{extract_events};
-use crate::util::fee::{has_expired, should_relay};
+use crate::util::fee::{should_relay};
 use crate::ws::JSONWebSocketClient;
 
 #[instrument(name = "listener_carbon", skip_all)]
-pub async fn init_ws(carbon_config: &Carbon, pg_pool: Arc<PgPool>) {
+pub async fn init_ws(carbon_config: &Carbon, pg_pool: Arc<PgPool>, carbon_broadcaster: Sender<BroadcastRequest>) {
     info!("Initializing WS for Carbon. Watching {:?} on {:?} for events", &carbon_config.relayer_address, &carbon_config.ws_url);
     let url = Url::parse(&carbon_config.ws_url).expect(&format!("Invalid WS URL {:?}", &carbon_config.ws_url));
 
@@ -26,6 +29,7 @@ pub async fn init_ws(carbon_config: &Carbon, pg_pool: Arc<PgPool>) {
     // add WithdrawTokenConfirmedEvent subscription
     let pool = pg_pool.clone();
     let carbon_config = carbon_config.clone();
+    let carbon_broadcaster = carbon_broadcaster.clone();
     client.add_cosmos_subscription(
         "1".to_string(),
         &format!("{}.connection_id CONTAINS '{}/'", CARBON_BRIDGE_PENDING_ACTION_EVENT, &carbon_config.axelar_bridge_id),
@@ -33,8 +37,9 @@ pub async fn init_ws(carbon_config: &Carbon, pg_pool: Arc<PgPool>) {
             // Spawn an async task to handle the message
             let pool = pool.clone();
             let carbon_config = carbon_config.clone();
+            let carbon_broadcaster = carbon_broadcaster.clone();
             tokio::spawn(async move {
-                process_bridge_pending_action(&carbon_config, msg, pool.clone()).await;
+                process_bridge_pending_action(&carbon_config, msg, pool.clone(), carbon_broadcaster.clone()).await;
             });
         })));
 
@@ -74,14 +79,14 @@ pub async fn init_ws(carbon_config: &Carbon, pg_pool: Arc<PgPool>) {
 
 // process_bridge_pending_action processes the PendingActionEvent
 #[instrument(skip_all)]
-async fn process_bridge_pending_action(carbon_config: &Carbon, msg: String, pg_pool: Arc<PgPool>) {
+async fn process_bridge_pending_action(carbon_config: &Carbon, msg: String, pg_pool: Arc<PgPool>, carbon_broadcaster: Sender<BroadcastRequest>) {
     info!("Processing new PendingActionEvent from Carbon");
     let events = extract_events(&msg, CARBON_BRIDGE_PENDING_ACTION_EVENT).unwrap();
     for event in events {
         let pending_action = parse_bridge_pending_action_event(event);
 
         // check if event has expired
-        if has_expired(&carbon_config, pending_action.get_relay_details()) {
+        if pending_action.get_relay_details().has_expired() {
             info!("Skipping event with nonce {:?} as it has expired", pending_action.nonce.to_u64());
             continue
         }
@@ -91,18 +96,59 @@ async fn process_bridge_pending_action(carbon_config: &Carbon, msg: String, pg_p
 
         // start the relay
         // TODO: separate thread?
-        start_relay(carbon_config, pending_action.nonce).await;
+        if should_relay(carbon_config, pending_action.get_relay_details()) {
+            start_relay(carbon_config, carbon_broadcaster.clone(), pending_action.nonce).await;
+        }
     }
 }
 
 // starts the relay process on carbon which will release fees to relayer address
-pub async fn start_relay(carbon_config: &Carbon, nonce: BigDecimal) {
+pub async fn start_relay(carbon_config: &Carbon, carbon_broadcaster: Sender<BroadcastRequest>, nonce: BigDecimal) {
     info!("Starting relay on {:?} for nonce {:?}", &carbon_config.rpc_url, &nonce);
-    // send relay tx
+    // Convert nonce to u64
     let nonce = nonce.to_u64().expect("could not convert nonce to u64");
-    send_msg_start_relay(carbon_config.clone(), nonce).await.expect("send message failed");
 
-    //TODO: update db
+    // Create a oneshot channel for the response
+    let (callback_tx, callback_rx) = oneshot::channel();
+
+    // Create MsgStartRelay
+    let msg_start_relay = MsgStartRelay {
+        relayer: carbon_config.relayer_address.clone(),
+        nonce,
+    };
+
+    // Create a BroadcastRequest with the message and callback
+    let broadcast_request = BroadcastRequest {
+        msg: Box::new(msg_start_relay),
+        callback: callback_tx,
+    };
+
+    // Send the BroadcastRequest through the carbon_broadcaster channel
+    if let Err(e) = carbon_broadcaster.send(broadcast_request).await {
+        eprintln!("Failed to send broadcast request: {:?}", e);
+        return;
+    }
+
+    // Await the response
+    match callback_rx.await {
+        Ok(response) => {
+            match response {
+                Ok(value) => {
+                    info!("Received successful response: {:?}", value);
+                    // TODO: Update the database here
+                }
+                Err(e) => {
+                    eprintln!("Failed to broadcast message: {:?}", e);
+                    // Handle the error and possibly update the DB to reflect the failure
+                    // TODO: update db back to pending?
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Failed to receive callback response: {:?}", e);
+            // Handle the error and possibly update the DB to reflect the failure
+        }
+    }
 }
 
 // process_bridge_revert_event processes the BridgeRevertedEvent
