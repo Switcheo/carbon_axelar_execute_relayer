@@ -123,17 +123,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Spawn listener_carbon::init_ws as a concurrent task
             let carbon_pg_pool = pg_pool.clone();
             let carbon_config = conf.carbon.clone();
+            let fee_config = conf.fee.clone();
             let carbon_broadcaster_clone = carbon_broadcaster.clone();
             let carbon_listen_task = tokio::spawn(async move {
-                carbon::listener::init_ws(&carbon_config, carbon_pg_pool, carbon_broadcaster_clone).await;
+                carbon::listener::init_ws(&carbon_config, &fee_config, carbon_pg_pool, carbon_broadcaster_clone).await;
             });
 
             // Spawn retry_carbon::init_all as a concurrent task
             let carbon_pg_pool = pg_pool.clone();
             let carbon_config = conf.carbon.clone();
+            let fee_config = conf.fee.clone();
             let carbon_broadcaster_clone = carbon_broadcaster.clone();
             let carbon_retry_task = tokio::spawn(async move {
-                carbon::retry::init_all(&carbon_config, carbon_pg_pool, carbon_broadcaster_clone).await;
+                carbon::retry::init_all(&carbon_config, &fee_config, carbon_pg_pool, carbon_broadcaster_clone).await;
             });
 
             // Spawn listener_evm::init_all_ws as a concurrent task

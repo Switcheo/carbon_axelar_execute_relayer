@@ -10,24 +10,26 @@ use tokio::time::interval;
 use tracing::{debug, error, info, instrument};
 use crate::carbon::broadcaster::BroadcastRequest;
 
-use crate::conf::Carbon;
+use crate::conf::{Carbon, Fee};
 use crate::db::DbPendingActionEvent;
 use crate::util::carbon_msg::{MsgPruneExpiredPendingActions, MsgStartRelay};
-use crate::util::fee::should_relay;
+use crate::util::fee::has_enough_fees;
 
 #[instrument(name = "retry_carbon", skip_all)]
-pub async fn init_all(carbon_config: &Carbon, pg_pool: Arc<PgPool>, carbon_broadcaster: Sender<BroadcastRequest>) {
-    poll_for_pending_action_events(carbon_config.clone(), pg_pool.clone(), carbon_broadcaster).await;
+pub async fn init_all(carbon_config: &Carbon, fee_config: &Fee, pg_pool: Arc<PgPool>, carbon_broadcaster: Sender<BroadcastRequest>) {
+    poll_for_pending_action_events(carbon_config, fee_config, pg_pool.clone(), carbon_broadcaster).await;
 }
 
 // Polls for new poll_for_pending_action_events saved in the DB that can be executed and enqueues them into the broadcast channel
 #[instrument(name = "poll_for_pending_action_events", skip_all)]
-async fn poll_for_pending_action_events(carbon_config: Carbon, pool: Arc<PgPool>, carbon_broadcaster: Sender<BroadcastRequest>) {
+async fn poll_for_pending_action_events(carbon_config: &Carbon, fee_config: &Fee, pool: Arc<PgPool>, carbon_broadcaster: Sender<BroadcastRequest>) {
     info!("Watching for events to broadcast");
     let mut interval = interval(Duration::from_secs(60));
+    let carbon_config = carbon_config.clone();
+    let fee_config = fee_config.clone();
     loop {
         interval.tick().await;
-        if let Err(e) = retry_pending_actions(&carbon_config.clone(), &pool, carbon_broadcaster.clone()).await {
+        if let Err(e) = retry_pending_actions(&carbon_config, &fee_config, &pool, carbon_broadcaster.clone()).await {
             error!("Failed to queue new events for broadcast: {}", e);
         }
         if let Err(e) = expire_pending_actions(&carbon_config.clone(), &pool, carbon_broadcaster.clone()).await {
@@ -37,7 +39,7 @@ async fn poll_for_pending_action_events(carbon_config: Carbon, pool: Arc<PgPool>
 }
 
 // Checks the DB for events that can be executed and enqueues them into the broadcast channel
-async fn retry_pending_actions(carbon_config: &Carbon, pool: &PgPool, carbon_broadcaster: Sender<BroadcastRequest>) -> Result<()> {
+async fn retry_pending_actions(carbon_config: &Carbon, fee_config: &Fee, pool: &PgPool, carbon_broadcaster: Sender<BroadcastRequest>) -> Result<()> {
     // check for new events
     debug!("Checking for pending_action_events to broadcast...");
     let events: Vec<DbPendingActionEvent> = sqlx::query_as!(
@@ -55,7 +57,7 @@ async fn retry_pending_actions(carbon_config: &Carbon, pool: &PgPool, carbon_bro
 
             continue
         }
-        if should_relay(&carbon_config, relay_details) {
+        if has_enough_fees(&fee_config, pending_action_event.clone()).await {
             queue_start_relay(&carbon_config, carbon_broadcaster.clone(), pending_action_event.nonce).await;
         }
     }

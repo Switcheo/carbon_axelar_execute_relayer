@@ -1,4 +1,5 @@
 use std::str::FromStr;
+use anyhow::anyhow;
 
 use chrono::Utc;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -10,20 +11,6 @@ use crate::util::datetime::{time_difference_str, timestamp_to_datetime};
 
 pub mod carbon_events;
 pub mod evm_events;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PayloadType {
-    RegisterToken = 0,
-    DeregisterToken,
-    DeployToken,
-    RegisterExecutable,
-    DeregisterExecutable,
-    Withdraw,
-    ExecuteGateway,
-    WithdrawAndExecute,
-    PauseContract,
-    UnpauseContract,
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PendingActionType {
@@ -129,44 +116,49 @@ fn serialize_u64_as_str<S>(x: &u64, serializer: S) -> Result<S::Ok, S::Error>
     serializer.serialize_str(&x.to_string())
 }
 
-impl FromStr for PayloadType {
-    type Err = ();
+impl PendingActionType {
+    pub fn to_str(self) -> &'static str {
+        match self {
+            PendingActionType::PendingRegisterTokenType => "register_token",
+            PendingActionType::PendingDeregisterTokenType => "deregister_token",
+            PendingActionType::PendingDeployNativeTokenType => "deploy_native_token",
+            PendingActionType::PendingWithdrawAndExecuteType => "withdraw_and_execute",
+            PendingActionType::PendingWithdrawType => "withdraw",
+            PendingActionType::PendingExecuteType => "execute",
+        }
+    }
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "0" => Ok(PayloadType::RegisterToken),
-            "1" => Ok(PayloadType::DeregisterToken),
-            "2" => Ok(PayloadType::DeployToken),
-            "3" => Ok(PayloadType::RegisterExecutable),
-            "4" => Ok(PayloadType::DeregisterExecutable),
-            "5" => Ok(PayloadType::Withdraw),
-            "6" => Ok(PayloadType::ExecuteGateway),
-            "7" => Ok(PayloadType::WithdrawAndExecute),
-            "8" => Ok(PayloadType::PauseContract),
-            "9" => Ok(PayloadType::UnpauseContract),
-            _ => Err(()),
+    pub fn from_prefix(prefix: &str) -> anyhow::Result<Self> {
+        match prefix {
+            "register_token" => Ok(PendingActionType::PendingRegisterTokenType),
+            "deregister_token" => Ok(PendingActionType::PendingDeregisterTokenType),
+            "deploy_native_token" => Ok(PendingActionType::PendingDeployNativeTokenType),
+            _ if prefix.starts_with("withdraw_and_execute") => Ok(PendingActionType::PendingWithdrawAndExecuteType),
+            _ if prefix.starts_with("withdraw") => Ok(PendingActionType::PendingWithdrawType),
+            _ if prefix.starts_with("execute") => Ok(PendingActionType::PendingExecuteType),
+            _ => Err(anyhow!("Invalid action type prefix: {}", prefix)),
         }
     }
 }
 
-// impl PendingActionType {
-//     pub fn to_i32(&self) -> i32 {
-//         *self as i32
-//     }
-// }
+impl From<PendingActionType> for i32 {
+    fn from(action_type: PendingActionType) -> Self {
+        action_type as i32
+    }
+}
 
-impl FromStr for PendingActionType {
-    type Err = ();
+impl TryFrom<i32> for PendingActionType {
+    type Error = anyhow::Error;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "0" => Ok(PendingActionType::PendingRegisterTokenType),
-            "1" => Ok(PendingActionType::PendingDeregisterTokenType),
-            "2" => Ok(PendingActionType::PendingDeployNativeTokenType),
-            "3" => Ok(PendingActionType::PendingWithdrawAndExecuteType),
-            "4" => Ok(PendingActionType::PendingWithdrawType),
-            "5" => Ok(PendingActionType::PendingExecuteType),
-            _ => Err(()),
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(PendingActionType::PendingRegisterTokenType),
+            1 => Ok(PendingActionType::PendingDeregisterTokenType),
+            2 => Ok(PendingActionType::PendingDeployNativeTokenType),
+            3 => Ok(PendingActionType::PendingWithdrawAndExecuteType),
+            4 => Ok(PendingActionType::PendingWithdrawType),
+            5 => Ok(PendingActionType::PendingExecuteType),
+            _ => Err(anyhow::anyhow!("Invalid value for PendingActionType: {}", value)),
         }
     }
 }
@@ -180,6 +172,10 @@ impl DbPendingActionEvent {
 
     pub fn get_relay_details_value(&self) -> Value {
         serde_json::to_value(&self.relay_details).expect("cannot parse relay_details")
+    }
+
+    pub fn get_pending_action_type(&self) -> PendingActionType {
+        self.pending_action_type.try_into().unwrap()
     }
 }
 
