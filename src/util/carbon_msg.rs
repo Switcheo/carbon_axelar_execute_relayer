@@ -7,6 +7,8 @@ pub trait IntoAny: Send + Debug {
     fn into_any(self: Box<Self>) -> Any;
 }
 
+// ** MsgStartRelay ** //
+
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 pub struct MsgStartRelay {
     pub relayer: String,
@@ -63,6 +65,69 @@ impl From<Box<MsgStartRelay>> for Any {
 }
 
 impl IntoAny for MsgStartRelay {
+    fn into_any(self: Box<Self>) -> Any {
+        self.into()
+    }
+}
+
+// ** MsgPruneExpiredPendingActions ** //
+
+#[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+pub struct MsgPruneExpiredPendingActions {
+    pub creator: String,
+    pub nonces: Vec<u64>,
+}
+
+impl Name for crate::switcheo::carbon::bridge::MsgPruneExpiredPendingActions {
+    const NAME: &'static str = "MsgPruneExpiredPendingActions";
+    const PACKAGE: &'static str = "Switcheo.carbon.bridge";
+}
+
+impl Msg for MsgPruneExpiredPendingActions {
+    type Proto = crate::switcheo::carbon::bridge::MsgPruneExpiredPendingActions;
+}
+
+impl TryFrom<crate::switcheo::carbon::bridge::MsgPruneExpiredPendingActions> for MsgPruneExpiredPendingActions {
+    type Error = ErrorReport;
+
+    fn try_from(proto: crate::switcheo::carbon::bridge::MsgPruneExpiredPendingActions) -> Result<MsgPruneExpiredPendingActions> {
+        MsgPruneExpiredPendingActions::try_from(&proto)
+    }
+}
+
+impl TryFrom<&crate::switcheo::carbon::bridge::MsgPruneExpiredPendingActions> for MsgPruneExpiredPendingActions {
+    type Error = ErrorReport;
+
+    fn try_from(proto: &crate::switcheo::carbon::bridge::MsgPruneExpiredPendingActions) -> Result<MsgPruneExpiredPendingActions> {
+        Ok(MsgPruneExpiredPendingActions {
+            creator: proto.creator.parse()?,
+            nonces: proto.nonces.clone(),
+        })
+    }
+}
+
+impl From<MsgPruneExpiredPendingActions> for crate::switcheo::carbon::bridge::MsgPruneExpiredPendingActions {
+    fn from(start_relay: MsgPruneExpiredPendingActions) -> crate::switcheo::carbon::bridge::MsgPruneExpiredPendingActions {
+        crate::switcheo::carbon::bridge::MsgPruneExpiredPendingActions::from(&start_relay)
+    }
+}
+
+impl From<&MsgPruneExpiredPendingActions> for crate::switcheo::carbon::bridge::MsgPruneExpiredPendingActions {
+    fn from(msg: &MsgPruneExpiredPendingActions) -> crate::switcheo::carbon::bridge::MsgPruneExpiredPendingActions {
+        crate::switcheo::carbon::bridge::MsgPruneExpiredPendingActions {
+            creator: msg.creator.to_string(),
+            nonces: msg.nonces.clone(),
+        }
+    }
+}
+
+impl From<Box<MsgPruneExpiredPendingActions>> for Any {
+    fn from(value: Box<MsgPruneExpiredPendingActions>) -> Self {
+        (*value).to_any().unwrap()
+    }
+}
+
+impl IntoAny for MsgPruneExpiredPendingActions {
     fn into_any(self: Box<Self>) -> Any {
         self.into()
     }

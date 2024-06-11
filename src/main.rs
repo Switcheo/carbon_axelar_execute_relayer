@@ -20,6 +20,7 @@ mod constants;
 mod util;
 mod broadcaster_carbon;
 mod tx_expire_nonces;
+mod retry_carbon;
 
 mod switcheo {
     pub mod carbon {
@@ -119,8 +120,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Spawn listener_carbon::init_ws as a concurrent task
             let carbon_pg_pool = pg_pool.clone();
+            let carbon_config = conf.carbon.clone();
+            let carbon_broadcaster_clone = carbon_broadcaster.clone();
             let carbon_listen_task = tokio::spawn(async move {
-                listener_carbon::init_ws(&conf.carbon, carbon_pg_pool, carbon_broadcaster).await;
+                listener_carbon::init_ws(&carbon_config, carbon_pg_pool, carbon_broadcaster_clone).await;
+            });
+
+            // Spawn retry_carbon::init_all as a concurrent task
+            let carbon_pg_pool = pg_pool.clone();
+            let carbon_config = conf.carbon.clone();
+            let carbon_broadcaster_clone = carbon_broadcaster.clone();
+            let carbon_retry_task = tokio::spawn(async move {
+                retry_carbon::init_all(&carbon_config, carbon_pg_pool, carbon_broadcaster_clone).await;
             });
 
             // Spawn listener_evm::init_all_ws as a concurrent task
@@ -138,7 +149,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             });
 
             // Wait for all spawned tasks to complete
-            let _ = tokio::join!(carbon_listen_task, evm_listen_all_task, evm_execute_task);
+            let _ = tokio::join!(carbon_listen_task, carbon_retry_task, evm_listen_all_task, evm_execute_task);
         },
         Some(Commands::Sync { tx_hash }) => {
             // Call a function to handle the sync logic for a specific transaction hash

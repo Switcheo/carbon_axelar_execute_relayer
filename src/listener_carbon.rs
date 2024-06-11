@@ -1,10 +1,8 @@
 use std::sync::Arc;
 use futures::lock::Mutex;
 use sqlx::PgPool;
-use sqlx::types::BigDecimal;
 use num_traits::ToPrimitive;
 use tokio::sync::mpsc::Sender;
-use tokio::sync::oneshot;
 use tracing::{error, info, instrument};
 use url::Url;
 use crate::broadcaster_carbon::BroadcastRequest;
@@ -12,8 +10,8 @@ use crate::broadcaster_carbon::BroadcastRequest;
 use crate::conf::Carbon;
 use crate::constants::events::{CARBON_AXELAR_CALL_CONTRACT_EVENT, CARBON_BRIDGE_PENDING_ACTION_EVENT, CARBON_BRIDGE_REVERT_EVENT};
 use crate::db::carbon_events::{delete_bridge_pending_action_event, save_axelar_call_contract_event, save_bridge_pending_action_event};
+use crate::retry_carbon::queue_start_relay;
 use crate::util::carbon::{parse_axelar_call_contract_event, parse_bridge_pending_action_event, parse_bridge_reverted_event};
-use crate::util::carbon_msg::MsgStartRelay;
 use crate::util::cosmos::{extract_events};
 use crate::util::fee::{should_relay};
 use crate::ws::JSONWebSocketClient;
@@ -97,59 +95,11 @@ async fn process_bridge_pending_action(carbon_config: &Carbon, msg: String, pg_p
         // start the relay
         // TODO: separate thread?
         if should_relay(carbon_config, pending_action.get_relay_details()) {
-            start_relay(carbon_config, carbon_broadcaster.clone(), pending_action.nonce).await;
+            queue_start_relay(carbon_config, carbon_broadcaster.clone(), pending_action.nonce).await;
         }
     }
 }
 
-// starts the relay process on carbon which will release fees to relayer address
-pub async fn start_relay(carbon_config: &Carbon, carbon_broadcaster: Sender<BroadcastRequest>, nonce: BigDecimal) {
-    info!("Starting relay on {:?} for nonce {:?}", &carbon_config.rpc_url, &nonce);
-    // Convert nonce to u64
-    let nonce = nonce.to_u64().expect("could not convert nonce to u64");
-
-    // Create a oneshot channel for the response
-    let (callback_tx, callback_rx) = oneshot::channel();
-
-    // Create MsgStartRelay
-    let msg_start_relay = MsgStartRelay {
-        relayer: carbon_config.relayer_address.clone(),
-        nonce,
-    };
-
-    // Create a BroadcastRequest with the message and callback
-    let broadcast_request = BroadcastRequest {
-        msg: Box::new(msg_start_relay),
-        callback: callback_tx,
-    };
-
-    // Send the BroadcastRequest through the carbon_broadcaster channel
-    if let Err(e) = carbon_broadcaster.send(broadcast_request).await {
-        eprintln!("Failed to send broadcast request: {:?}", e);
-        return;
-    }
-
-    // Await the response
-    match callback_rx.await {
-        Ok(response) => {
-            match response {
-                Ok(value) => {
-                    info!("Received successful response: {:?}", value);
-                    // TODO: Update the database here
-                }
-                Err(e) => {
-                    eprintln!("Failed to broadcast message: {:?}", e);
-                    // Handle the error and possibly update the DB to reflect the failure
-                    // TODO: update db back to pending?
-                }
-            }
-        }
-        Err(e) => {
-            eprintln!("Failed to receive callback response: {:?}", e);
-            // Handle the error and possibly update the DB to reflect the failure
-        }
-    }
-}
 
 // process_bridge_revert_event processes the BridgeRevertedEvent
 #[instrument(skip_all)]
