@@ -50,12 +50,6 @@ message ExternalTokenMapping {
   string denom = 5; // corresponding carbon native denom
 }
 
-// contracts from external chains that can be executed by carbon
-message ExecutableContract {
-  string connection_id = 1;
-  string address = 2;
-}
-
 // RelayDetails defines the details of the relay
 message RelayDetails {
   string fee_receiver_address = 1
@@ -66,7 +60,10 @@ message RelayDetails {
     (gogoproto.customtype) = "github.com/cosmos/cosmos-sdk/types.Coin",
     (gogoproto.nullable) = false
   ];
-  int64 block_created_at = 4;
-  google.protobuf.Int64Value block_sent_at = 5
-      [ (gogoproto.wktpointer) = true ];
+  google.protobuf.Timestamp expiry_block_time = 4
+      [ (gogoproto.stdtime) = true, (gogoproto.nullable) = false ];
+  google.protobuf.Timestamp created_at = 5
+      [ (gogoproto.stdtime) = true, (gogoproto.nullable) = false ];
+  google.protobuf.Timestamp sent_at = 6
+      [ (gogoproto.stdtime) = true, (gogoproto.nullable) = true ];
 }

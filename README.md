@@ -116,6 +116,13 @@ cargo run -- -vv sync-from 318371 318490
 cargo run -- -vv start-relay 1
 ```
 
+#### Expire Pending Actions
+
+```bash
+# expires pending actions by their nonces
+cargo run -- -vv expire-pending-actions 1,2,3
+```
+
 ## Generating protos
 
 **Pre-requisite: install `buf` cli on your computer**

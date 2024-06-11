@@ -103,7 +103,8 @@ pub async fn get_latest_block_height(rpc_url: &str) -> Result<u64> {
     Ok(block_height)
 }
 
-pub async fn send_transaction(rest_url: &str, tx_bytes: Vec<u8>) -> Result<()> {
+// sends a tx and returns the json response
+pub async fn send_transaction(rest_url: &str, tx_bytes: Vec<u8>) -> Result<serde_json::Value> {
     let client = Client::new();
 
     // Convert tx_bytes to base64
@@ -135,6 +136,6 @@ pub async fn send_transaction(rest_url: &str, tx_bytes: Vec<u8>) -> Result<()> {
     }
 
     info!("tx sent successfully: {}", response.to_string());
-    Ok(())
+    Ok(response)
 }
 

@@ -62,15 +62,6 @@ pub struct ExternalTokenMapping {
     #[prost(string, tag="5")]
     pub denom: ::prost::alloc::string::String,
 }
-/// contracts from external chains that can be executed by carbon
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ExecutableContract {
-    #[prost(string, tag="1")]
-    pub connection_id: ::prost::alloc::string::String,
-    #[prost(string, tag="2")]
-    pub address: ::prost::alloc::string::String,
-}
 /// RelayDetails defines the details of the relay
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -81,10 +72,12 @@ pub struct RelayDetails {
     pub fee_sender_address: ::prost::alloc::string::String,
     #[prost(message, optional, tag="3")]
     pub fee: ::core::option::Option<::cosmos_sdk_proto::cosmos::base::v1beta1::Coin>,
-    #[prost(int64, tag="4")]
-    pub block_created_at: i64,
+    #[prost(message, optional, tag="4")]
+    pub expiry_block_time: ::core::option::Option<::pbjson_types::Timestamp>,
     #[prost(message, optional, tag="5")]
-    pub block_sent_at: ::core::option::Option<::pbjson_types::Int64Value>,
+    pub created_at: ::core::option::Option<::pbjson_types::Timestamp>,
+    #[prost(message, optional, tag="6")]
+    pub sent_at: ::core::option::Option<::pbjson_types::Timestamp>,
 }
 /// Params defines the parameters for the module.
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -106,12 +99,12 @@ pub struct Params {
     /// relay_whitelist_duration specifies the number of blocks before a relay can
     /// be started by any relayer. Prior to this duration, only the whitelisted
     /// relayers can start the relay.
-    #[prost(int64, tag="3")]
-    pub relay_whitelist_duration: i64,
-    /// relay_expiry_duration specifies the number of blocks after which a relay
-    /// that has not been started will be pruned from the store
-    #[prost(int64, tag="4")]
-    pub relay_expiry_duration: i64,
+    #[prost(message, optional, tag="3")]
+    pub relay_whitelist_duration: ::core::option::Option<::pbjson_types::Duration>,
+    /// max_relay_expiry_duration specifies the number of blocks after which a
+    /// relay that has not been started will be pruned from the store
+    #[prost(message, optional, tag="4")]
+    pub max_relay_expiry_duration: ::core::option::Option<::pbjson_types::Duration>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -153,23 +146,23 @@ pub struct MsgUpdateIbcTimeoutHeightOffsetResponse {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct MsgUpdateRelayExpiry {
+pub struct MsgUpdateMaxRelayExpiry {
     #[prost(string, tag="1")]
     pub creator: ::prost::alloc::string::String,
-    #[prost(int64, tag="2")]
-    pub expiry: i64,
+    #[prost(message, optional, tag="2")]
+    pub expiry: ::core::option::Option<::pbjson_types::Duration>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct MsgUpdateRelayExpiryResponse {
+pub struct MsgUpdateMaxRelayExpiryResponse {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgUpdateRelayWhitelistDuration {
     #[prost(string, tag="1")]
     pub creator: ::prost::alloc::string::String,
-    #[prost(int64, tag="2")]
-    pub whitelist_duration: i64,
+    #[prost(message, optional, tag="2")]
+    pub whitelist_duration: ::core::option::Option<::pbjson_types::Duration>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -387,6 +380,8 @@ pub struct MsgRegisterExternalToken {
     pub carbon_token_name: ::prost::alloc::string::String,
     #[prost(message, optional, tag="6")]
     pub relay_fee: ::core::option::Option<::cosmos_sdk_proto::cosmos::base::v1beta1::Coin>,
+    #[prost(message, optional, tag="7")]
+    pub expiry_duration: ::core::option::Option<::pbjson_types::Duration>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -417,6 +412,8 @@ pub struct MsgDeployNativeToken {
     pub denom: ::prost::alloc::string::String,
     #[prost(message, optional, tag="4")]
     pub relay_fee: ::core::option::Option<::cosmos_sdk_proto::cosmos::base::v1beta1::Coin>,
+    #[prost(message, optional, tag="5")]
+    pub expiry_duration: ::core::option::Option<::pbjson_types::Duration>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -451,6 +448,8 @@ pub struct MsgWithdrawToken {
     pub tokens: ::core::option::Option<::cosmos_sdk_proto::cosmos::base::v1beta1::Coin>,
     #[prost(message, optional, tag="5")]
     pub relay_fee: ::core::option::Option<::cosmos_sdk_proto::cosmos::base::v1beta1::Coin>,
+    #[prost(message, optional, tag="6")]
+    pub expiry_duration: ::core::option::Option<::pbjson_types::Duration>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -507,6 +506,8 @@ pub struct MsgExecuteFromCarbon {
     pub tokens: ::core::option::Option<::cosmos_sdk_proto::cosmos::base::v1beta1::Coin>,
     #[prost(message, optional, tag="7")]
     pub relay_fee: ::core::option::Option<::cosmos_sdk_proto::cosmos::base::v1beta1::Coin>,
+    #[prost(message, optional, tag="8")]
+    pub expiry_duration: ::core::option::Option<::pbjson_types::Duration>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -523,5 +524,73 @@ pub struct MsgStartRelay {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgStartRelayResponse {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MsgPruneExpiredPendingActions {
+    #[prost(string, tag="1")]
+    pub creator: ::prost::alloc::string::String,
+    #[prost(uint64, repeated, tag="2")]
+    pub nonces: ::prost::alloc::vec::Vec<u64>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MsgPruneExpiredPendingActionsResponse {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MsgRevertPendingAction {
+    #[prost(string, tag="1")]
+    pub authority: ::prost::alloc::string::String,
+    #[prost(string, tag="2")]
+    pub connection_id: ::prost::alloc::string::String,
+    #[prost(uint64, tag="3")]
+    pub nonce: u64,
+    #[prost(uint64, tag="4")]
+    pub action_type: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MsgRevertPendingActionResponse {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MsgConfirmPendingAction {
+    #[prost(string, tag="1")]
+    pub authority: ::prost::alloc::string::String,
+    #[prost(string, tag="2")]
+    pub connection_id: ::prost::alloc::string::String,
+    #[prost(uint64, tag="3")]
+    pub nonce: u64,
+    #[prost(uint64, tag="4")]
+    pub action_type: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MsgConfirmPendingActionResponse {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MsgAddRelayer {
+    #[prost(string, tag="1")]
+    pub authority: ::prost::alloc::string::String,
+    #[prost(string, tag="2")]
+    pub relayer: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MsgAddRelayerResponse {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MsgRemoveRelayer {
+    #[prost(string, tag="1")]
+    pub authority: ::prost::alloc::string::String,
+    #[prost(string, tag="2")]
+    pub relayer: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MsgRemoveRelayerResponse {
 }
 // @@protoc_insertion_point(module)

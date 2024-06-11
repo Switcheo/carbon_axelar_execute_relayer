@@ -3,21 +3,20 @@ use std::sync::Arc;
 
 use clap::{Parser, Subcommand};
 use sqlx::PgPool;
-use sqlx::types::BigDecimal;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
 use conf::AppConfig;
+use crate::util::carbon_tx;
 
 mod conf;
 mod ws;
-mod listener_carbon;
-mod listener_evm;
 mod db;
-mod broadcaster_evm;
-mod tx_sync;
 mod constants;
 mod util;
+mod operational;
+mod carbon;
+mod evm;
 
 mod switcheo {
     pub mod carbon {
@@ -66,7 +65,13 @@ enum Commands {
         /// nonce to start relay
         #[arg(value_name = "NONCE")]
         nonce: u64,
-    }
+    },
+    /// Expire pending actions for multiple nonces
+    ExpirePendingActions {
+        /// nonce to start relay
+        #[arg(value_name = "NONCES", num_args = 1.., value_delimiter=',')]
+        nonces: Vec<u64>,
+    },
     // Run
     // #[command(subcommand)]
     // query_command: Option<QueryCommands>,
@@ -112,28 +117,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Run commands based on user input
     match &cli.command {
         Some(Commands::Run) => {
+            // initialize broadcaster_carbon
+            let carbon_broadcaster = carbon::broadcaster::init_all(&conf.carbon).await;
+
             // Spawn listener_carbon::init_ws as a concurrent task
             let carbon_pg_pool = pg_pool.clone();
+            let carbon_config = conf.carbon.clone();
+            let carbon_broadcaster_clone = carbon_broadcaster.clone();
             let carbon_listen_task = tokio::spawn(async move {
-                listener_carbon::init_ws(&conf.carbon, carbon_pg_pool).await;
+                carbon::listener::init_ws(&carbon_config, carbon_pg_pool, carbon_broadcaster_clone).await;
+            });
+
+            // Spawn retry_carbon::init_all as a concurrent task
+            let carbon_pg_pool = pg_pool.clone();
+            let carbon_config = conf.carbon.clone();
+            let carbon_broadcaster_clone = carbon_broadcaster.clone();
+            let carbon_retry_task = tokio::spawn(async move {
+                carbon::retry::init_all(&carbon_config, carbon_pg_pool, carbon_broadcaster_clone).await;
             });
 
             // Spawn listener_evm::init_all_ws as a concurrent task
             let evm_pg_pool = pg_pool.clone();
             let evm_chains = conf.evm_chains.clone();
             let evm_listen_all_task = tokio::spawn(async move {
-                listener_evm::init_all_ws(evm_chains, evm_pg_pool).await;
+                evm::listener::init_all_ws(evm_chains, evm_pg_pool).await;
             });
 
             // Spawn broadcaster_evm::init_all as a concurrent task
             let broadcaster_evm_pg_pool = pg_pool.clone();
             let evm_chains = conf.evm_chains.clone();
             let evm_execute_task = tokio::spawn(async move {
-                broadcaster_evm::init_all(evm_chains, broadcaster_evm_pg_pool).await;
+                evm::broadcaster::init_all(evm_chains, broadcaster_evm_pg_pool).await;
             });
 
             // Wait for all spawned tasks to complete
-            let _ = tokio::join!(carbon_listen_task, evm_listen_all_task, evm_execute_task);
+            let _ = tokio::join!(carbon_listen_task, carbon_retry_task, evm_listen_all_task, evm_execute_task);
         },
         Some(Commands::Sync { tx_hash }) => {
             // Call a function to handle the sync logic for a specific transaction hash
@@ -142,11 +160,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         Some(Commands::SyncFrom { start_height, end_height }) => {
             // Call a function to handle the sync logic for a range of block heights
-            tx_sync::sync_block_range(conf.clone(), pg_pool.clone(), *start_height, *end_height).await?;
+            operational::tx_sync::sync_block_range(conf.clone(), pg_pool.clone(), *start_height, *end_height).await?;
         }
         Some(Commands::StartRelay { nonce }) => {
             // Call a function to handle the starting the relay
-            listener_carbon::start_relay(&conf.carbon.clone(), BigDecimal::from(*nonce)).await;
+            let _ = carbon_tx::send_msg_start_relay(&conf.carbon.clone(), *nonce).await;
+        }
+        Some(Commands::ExpirePendingActions { nonces }) => {
+            // Call a function to handle the starting the relay
+            let _ = operational::expire::expire_pending_actions(&conf.carbon.clone(), nonces.clone()).await;
         }
         None => {}
     }
