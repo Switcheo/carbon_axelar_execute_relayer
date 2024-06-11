@@ -11,16 +11,12 @@ use crate::util::carbon_tx;
 
 mod conf;
 mod ws;
-mod listener_carbon;
-mod listener_evm;
 mod db;
-mod broadcaster_evm;
-mod tx_sync;
 mod constants;
 mod util;
-mod broadcaster_carbon;
-mod tx_expire_nonces;
-mod retry_carbon;
+mod operational;
+mod carbon;
+mod evm;
 
 mod switcheo {
     pub mod carbon {
@@ -116,14 +112,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match &cli.command {
         Some(Commands::Run) => {
             // initialize broadcaster_carbon
-            let carbon_broadcaster = broadcaster_carbon::init_all(&conf.carbon).await;
+            let carbon_broadcaster = carbon::broadcaster::init_all(&conf.carbon).await;
 
             // Spawn listener_carbon::init_ws as a concurrent task
             let carbon_pg_pool = pg_pool.clone();
             let carbon_config = conf.carbon.clone();
             let carbon_broadcaster_clone = carbon_broadcaster.clone();
             let carbon_listen_task = tokio::spawn(async move {
-                listener_carbon::init_ws(&carbon_config, carbon_pg_pool, carbon_broadcaster_clone).await;
+                carbon::listener::init_ws(&carbon_config, carbon_pg_pool, carbon_broadcaster_clone).await;
             });
 
             // Spawn retry_carbon::init_all as a concurrent task
@@ -131,21 +127,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let carbon_config = conf.carbon.clone();
             let carbon_broadcaster_clone = carbon_broadcaster.clone();
             let carbon_retry_task = tokio::spawn(async move {
-                retry_carbon::init_all(&carbon_config, carbon_pg_pool, carbon_broadcaster_clone).await;
+                carbon::retry::init_all(&carbon_config, carbon_pg_pool, carbon_broadcaster_clone).await;
             });
 
             // Spawn listener_evm::init_all_ws as a concurrent task
             let evm_pg_pool = pg_pool.clone();
             let evm_chains = conf.evm_chains.clone();
             let evm_listen_all_task = tokio::spawn(async move {
-                listener_evm::init_all_ws(evm_chains, evm_pg_pool).await;
+                evm::listener::init_all_ws(evm_chains, evm_pg_pool).await;
             });
 
             // Spawn broadcaster_evm::init_all as a concurrent task
             let broadcaster_evm_pg_pool = pg_pool.clone();
             let evm_chains = conf.evm_chains.clone();
             let evm_execute_task = tokio::spawn(async move {
-                broadcaster_evm::init_all(evm_chains, broadcaster_evm_pg_pool).await;
+                evm::broadcaster::init_all(evm_chains, broadcaster_evm_pg_pool).await;
             });
 
             // Wait for all spawned tasks to complete
@@ -158,7 +154,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         Some(Commands::SyncFrom { start_height, end_height }) => {
             // Call a function to handle the sync logic for a range of block heights
-            tx_sync::sync_block_range(conf.clone(), pg_pool.clone(), *start_height, *end_height).await?;
+            operational::tx_sync::sync_block_range(conf.clone(), pg_pool.clone(), *start_height, *end_height).await?;
         }
         Some(Commands::StartRelay { nonce }) => {
             // Call a function to handle the starting the relay
