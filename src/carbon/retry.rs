@@ -147,15 +147,15 @@ pub async fn queue_expire_relay(carbon_config: &Carbon, carbon_broadcaster: Send
     // Create a oneshot channel for the response
     let (callback_tx, callback_rx) = oneshot::channel();
 
-    // Create MsgStartRelay
-    let msg_expire_nonces = MsgPruneExpiredPendingActions {
+    // Create msg
+    let msg_expire_actions = MsgPruneExpiredPendingActions {
         creator: carbon_config.relayer_address.clone(),
         nonces,
     };
 
     // Create a BroadcastRequest with the message and callback
     let broadcast_request = BroadcastRequest {
-        msg: Box::new(msg_expire_nonces),
+        msg: Box::new(msg_expire_actions),
         callback: callback_tx,
     };
 

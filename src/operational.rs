@@ -1,2 +1,2 @@
-pub mod expire_nonces;
+pub mod expire;
 pub mod tx_sync;

@@ -9,7 +9,7 @@ use cosmrs::tendermint::block::Height;
 use prost_types::Any;
 use serde_json::Value;
 use crate::conf::Carbon;
-use crate::util::carbon_msg::MsgStartRelay;
+use crate::util::carbon_msg::{MsgPruneExpiredPendingActions, MsgStartRelay};
 use crate::util::cosmos::{get_account_info, get_latest_block_height, send_transaction};
 
 const COSMOS_HD_PATH: &str = "m/44'/118'/0'/0/0";
@@ -27,6 +27,21 @@ pub async fn send_msg_start_relay(
 
     // send msg via a tx
     send_msg_via_tx(conf, msg_start_relay).await
+}
+
+pub async fn send_msg_expire_relays(
+    conf: &Carbon,
+    nonces: Vec<u64>,
+) -> Result<Value> {
+    let msg_expire_actions = MsgPruneExpiredPendingActions {
+        creator: conf.relayer_address.clone(),
+        nonces,
+    }
+        .to_any()
+        .unwrap();
+
+    // send msg via a tx
+    send_msg_via_tx(conf, msg_expire_actions).await
 }
 
 pub async fn send_msg_via_tx(

@@ -65,7 +65,13 @@ enum Commands {
         /// nonce to start relay
         #[arg(value_name = "NONCE")]
         nonce: u64,
-    }
+    },
+    /// Expire pending actions for multiple nonces
+    ExpirePendingActions {
+        /// nonce to start relay
+        #[arg(value_name = "NONCES", num_args = 1.., value_delimiter=',')]
+        nonces: Vec<u64>,
+    },
     // Run
     // #[command(subcommand)]
     // query_command: Option<QueryCommands>,
@@ -159,6 +165,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(Commands::StartRelay { nonce }) => {
             // Call a function to handle the starting the relay
             let _ = carbon_tx::send_msg_start_relay(&conf.carbon.clone(), *nonce).await;
+        }
+        Some(Commands::ExpirePendingActions { nonces }) => {
+            // Call a function to handle the starting the relay
+            let _ = operational::expire::expire_pending_actions(&conf.carbon.clone(), nonces.clone()).await;
         }
         None => {}
     }
