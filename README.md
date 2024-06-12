@@ -17,9 +17,6 @@ e.g. withdrawals, or any external executions
 
 Note: relayer needs to be whitelisted on carbon
 
-TODO:
-- [ ] proper fee conversion
-
 ## Setup
 
 #### Install rust/cargo
