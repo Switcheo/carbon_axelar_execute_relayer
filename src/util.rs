@@ -1,7 +1,6 @@
 pub mod cosmos;
 pub mod evm;
 pub mod carbon;
-pub mod fee;
 pub mod carbon_tx;
 pub mod carbon_msg;
 pub mod datetime;

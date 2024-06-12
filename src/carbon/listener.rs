@@ -13,7 +13,7 @@ use crate::constants::events::{CARBON_AXELAR_CALL_CONTRACT_EVENT, CARBON_BRIDGE_
 use crate::db::carbon_events::{delete_bridge_pending_action_event, save_axelar_call_contract_event, save_bridge_pending_action_event};
 use crate::util::carbon::{parse_axelar_call_contract_event, parse_bridge_pending_action_event, parse_bridge_reverted_event};
 use crate::util::cosmos::{extract_events};
-use crate::util::fee::{has_enough_fees};
+use crate::fee::fee::{has_enough_fees};
 use crate::ws::JSONWebSocketClient;
 
 #[instrument(name = "listener_carbon", skip_all)]

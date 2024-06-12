@@ -29,10 +29,18 @@ pub struct Carbon {
     pub relayer_mnemonic: String,
     pub account_prefix: String,
 }
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RelayStrategy {
+    Hydrogen,
+    All,
+    GreaterThan0,
+}
 
 #[derive(Clone, Debug, Deserialize)]
 #[allow(unused)]
 pub struct Fee {
+    pub relay_strategy: RelayStrategy,
     pub hydrogen_url: String,
     pub fee_tolerance_percentage: f64,
 }

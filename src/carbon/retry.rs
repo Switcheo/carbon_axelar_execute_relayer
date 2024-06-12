@@ -13,7 +13,7 @@ use crate::carbon::broadcaster::BroadcastRequest;
 use crate::conf::{Carbon, Fee};
 use crate::db::DbPendingActionEvent;
 use crate::util::carbon_msg::{MsgPruneExpiredPendingActions, MsgStartRelay};
-use crate::util::fee::has_enough_fees;
+use crate::fee::fee::has_enough_fees;
 
 #[instrument(name = "retry_carbon", skip_all)]
 pub async fn init_all(carbon_config: &Carbon, fee_config: &Fee, pg_pool: Arc<PgPool>, carbon_broadcaster: Sender<BroadcastRequest>) {

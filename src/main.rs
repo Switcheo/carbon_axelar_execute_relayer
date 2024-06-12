@@ -17,6 +17,7 @@ mod util;
 mod operational;
 mod carbon;
 mod evm;
+mod fee;
 
 mod switcheo {
     pub mod carbon {
