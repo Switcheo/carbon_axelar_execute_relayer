@@ -117,17 +117,6 @@ fn serialize_u64_as_str<S>(x: &u64, serializer: S) -> Result<S::Ok, S::Error>
 }
 
 impl PendingActionType {
-    pub fn to_str(self) -> &'static str {
-        match self {
-            PendingActionType::PendingRegisterTokenType => "register_token",
-            PendingActionType::PendingDeregisterTokenType => "deregister_token",
-            PendingActionType::PendingDeployNativeTokenType => "deploy_native_token",
-            PendingActionType::PendingWithdrawAndExecuteType => "withdraw_and_execute",
-            PendingActionType::PendingWithdrawType => "withdraw",
-            PendingActionType::PendingExecuteType => "execute",
-        }
-    }
-
     pub fn from_prefix(prefix: &str) -> anyhow::Result<Self> {
         match prefix {
             "register_token" => Ok(PendingActionType::PendingRegisterTokenType),
