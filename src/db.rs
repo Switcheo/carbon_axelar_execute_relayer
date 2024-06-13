@@ -29,7 +29,7 @@ pub struct DbPendingActionEvent {
     pub connection_id: String,
     pub bridge_id: String,
     pub chain_id: String,
-    pub nonce: BigDecimal,
+    pub nonce: i64,
     pub pending_action_type: i32,
     pub retry_count: i32,
     pub relay_details: JsonValue,
@@ -38,7 +38,7 @@ pub struct DbPendingActionEvent {
 // carbon
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExpiredPendingActionEvent {
-    pub nonce: BigDecimal,
+    pub nonce: i64,
     pub pending_action_type: i32,
     pub connection_id: String,
     pub relay_details: JsonValue,
@@ -51,7 +51,7 @@ pub struct BridgeAcknowledgedEvent {
     pub bridge_id: String,
     pub chain_id: String,
     pub gateway_address: String,
-    pub nonce: BigDecimal,
+    pub nonce: i64,
 }
 
 // carbon
@@ -61,14 +61,14 @@ pub struct BridgeRevertedEvent {
     pub bridge_id: String,
     pub chain_id: String,
     pub gateway_address: String,
-    pub nonce: BigDecimal,
+    pub nonce: i64,
 }
 
 // carbon
 #[derive(Debug, Clone, PartialEq, FromRow)]
 pub struct DbAxelarCallContractEvent {
     pub id: i32,
-    pub nonce: BigDecimal,
+    pub nonce: i64,
     pub payload_hash: String, // hex string
     pub payload: String, // hex string
     pub payload_encoding: String,
