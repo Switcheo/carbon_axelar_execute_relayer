@@ -2,13 +2,12 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use anyhow::{Context, Error, Result};
+use anyhow::{Context, Result};
 use ethers::core::k256::ecdsa::SigningKey;
 use ethers::prelude::*;
 use ethers::signers::LocalWallet;
 use ethers::utils::hex::decode;
 use sqlx::PgPool;
-use sqlx::postgres::PgQueryResult;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::{Duration, interval};
@@ -16,6 +15,7 @@ use tracing::{debug, error, info, instrument};
 
 use crate::conf::Chain;
 use crate::db::DbContractCallApprovedEvent;
+use crate::db::evm_events::update_executed;
 
 abigen!(
     IAxelarExecutable,
@@ -133,7 +133,7 @@ async fn receive_and_broadcast(chain: Chain, mut rx: Receiver<DbContractCallAppr
             // If already executed, mark db event as executed
             info!("Skipping event as blockchain query for is_contract_call_approved is !approved. This can mean it is already executed, payload_hash: {:?}", &event.payload_hash);
             // update executed
-            update_executed(&pg_pool, &event).await?;
+            update_executed(pg_pool.clone(), &event).await?;
             continue;
         }
 
@@ -166,18 +166,8 @@ async fn receive_and_broadcast(chain: Chain, mut rx: Receiver<DbContractCallAppr
         broadcast_tx(chain.clone(), event.clone(), provider.clone()).await?;
 
         // if no errors, we can update
-        update_executed(&pg_pool, &event).await?;
+        update_executed(pg_pool.clone(), &event).await?;
     })
-}
-
-async fn update_executed(pg_pool: &Arc<PgPool>, event: &DbContractCallApprovedEvent) -> std::result::Result<PgQueryResult, Error> {
-    sqlx::query!(
-                        "UPDATE contract_call_approved_events SET broadcast_status = $1 WHERE id = $2",
-                        "executed",
-                        &event.id
-                    )
-        .execute(pg_pool.as_ref())
-        .await.context("Failed to update contract_call_approved_events")
 }
 
 async fn init_provider(chain: Chain) -> Result<Arc<SignerMiddleware<Provider<Http>, Wallet<SigningKey>>>> {

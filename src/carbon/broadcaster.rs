@@ -4,8 +4,8 @@ use tokio::sync::mpsc::Sender;
 use tracing::instrument;
 
 use crate::conf::Carbon;
-use crate::util::carbon_msg::IntoAny;
-use crate::util::carbon_tx::send_msg_via_tx;
+use crate::util::carbon::msg::IntoAny;
+use crate::util::carbon::tx::send_msg_via_tx;
 
 pub struct BroadcastRequest {
     pub msg: Box<dyn IntoAny>,

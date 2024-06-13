@@ -13,7 +13,7 @@ use crate::constants::events::{CARBON_AXELAR_CALL_CONTRACT_EVENT, CARBON_BRIDGE_
 use crate::db::carbon_events::{get_chain_id_for_nonce, get_pending_action_by_nonce, save_axelar_call_contract_event, save_bridge_pending_action_event};
 use crate::db::DbAxelarCallContractEvent;
 use crate::db::evm_events::save_call_contract_approved_event;
-use crate::util::carbon::{parse_axelar_call_contract_event, parse_bridge_pending_action_event};
+use crate::util::carbon::parser::{parse_axelar_call_contract_event, parse_bridge_pending_action_event};
 use crate::util::cosmos::{Event, TxResultInner};
 use crate::util::evm::ContractCallApprovedEvent;
 
@@ -81,7 +81,7 @@ pub async fn sync_block_range(conf: AppConfig, pg_pool: Arc<PgPool>, start_heigh
     // Find and save EVM event for each new payload_hash found
     // TODO: can be refactored and optimized to pass in multiple payload_hashes
     for event in saved_call_contract_events {
-        let chain_id_result = get_chain_id_for_nonce(&pg_pool, &event.nonce).await;
+        let chain_id_result = get_chain_id_for_nonce(pg_pool.clone(), &event.nonce).await;
         let chain_id = match chain_id_result {
             Ok(chain_id) => {
                 match chain_id {
@@ -112,7 +112,7 @@ pub async fn sync_block_range(conf: AppConfig, pg_pool: Arc<PgPool>, start_heigh
 
 async fn should_save_call_contract_event(pg_pool: Arc<PgPool>, axelar_call_contract_event: &DbAxelarCallContractEvent) -> bool {
     // check if nonce exist on pending_action_events table
-    let result = get_pending_action_by_nonce(&pg_pool, &axelar_call_contract_event.nonce).await;
+    let result = get_pending_action_by_nonce(pg_pool.clone(), &axelar_call_contract_event.nonce).await;
     match result {
         Ok(Some(_)) => true,
         Ok(None) => false,

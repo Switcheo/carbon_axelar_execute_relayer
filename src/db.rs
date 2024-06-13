@@ -31,7 +31,16 @@ pub struct DbPendingActionEvent {
     pub chain_id: String,
     pub nonce: BigDecimal,
     pub pending_action_type: i32,
-    pub broadcast_status: String,
+    pub retry_count: i32,
+    pub relay_details: JsonValue,
+}
+
+// carbon
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExpiredPendingActionEvent {
+    pub nonce: BigDecimal,
+    pub pending_action_type: i32,
+    pub connection_id: String,
     pub relay_details: JsonValue,
 }
 

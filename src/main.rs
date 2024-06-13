@@ -7,7 +7,6 @@ use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
 use conf::AppConfig;
-use crate::util::carbon_tx;
 
 mod conf;
 mod ws;
@@ -167,7 +166,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Some(Commands::StartRelay { nonce }) => {
             // Call a function to handle the starting the relay
-            let _ = carbon_tx::send_msg_start_relay(&conf.carbon.clone(), *nonce).await;
+            let _ = operational::start_relay::start_relay(&conf.carbon.clone(), *nonce).await;
         }
         Some(Commands::ExpirePendingActions { nonces }) => {
             // Call a function to handle the starting the relay

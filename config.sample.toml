@@ -19,6 +19,17 @@ ws_url = "ws://localhost:26657/websocket"
 relayer_address = "tswth1734770tk39nrhfl5y8uyhfpu45n2a7r9ua22a2"
 # mnemonic key of relayer address on carbon to receive fees and start relays
 relayer_mnemonic = "<mnemonic>"
+# maximum number of retries the relayer should attempt before it stops trying
+maximum_start_relay_retry_count = 12
+
+[fee]
+# the strategy the relayer will use to determine if the fees are enough for relay
+# allowed values = hydrogen, all, greater_than_0
+relay_strategy = "hydrogen"
+# convenience hydrogen url to check the various fees
+hydrogen_url = "http://localhost:8080"
+# allow up to x% less from latest fees
+fee_tolerance_percentage = 5.0
 
 [[evm_chain]]
 # chain id should be the same as what is found on carbon's connection

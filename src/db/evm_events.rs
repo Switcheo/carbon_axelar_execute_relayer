@@ -1,10 +1,13 @@
 use std::str::FromStr;
 use std::sync::Arc;
+use anyhow::{Context, Error};
 use sqlx::PgPool;
+use sqlx::postgres::PgQueryResult;
 use sqlx::types::BigDecimal;
 use tracing::{error, info, warn};
 use crate::conf::Chain;
 use crate::db::carbon_events::get_axelar_call_contract_event;
+use crate::db::DbContractCallApprovedEvent;
 use crate::util::evm::ContractCallApprovedEvent;
 
 pub async fn save_call_contract_approved_event(chain_config: Chain, pg_pool: Arc<PgPool>, event: ContractCallApprovedEvent) {
@@ -12,7 +15,7 @@ pub async fn save_call_contract_approved_event(chain_config: Chain, pg_pool: Arc
     let payload_hash = format!("{:?}", event.payload_hash);
 
     // get the corresponding carbon event
-    let axelar_call_contract_event_result = get_axelar_call_contract_event(&pg_pool, &payload_hash).await;
+    let axelar_call_contract_event_result = get_axelar_call_contract_event(pg_pool.clone(), &payload_hash).await;
     let axelar_call_contract_event = match axelar_call_contract_event_result {
         Ok(event) => {
             match event {
@@ -51,4 +54,14 @@ pub async fn save_call_contract_approved_event(chain_config: Chain, pg_pool: Arc
         Ok(_result) => info!("Inserted event successfully with payload_hash {}", &payload_hash),
         Err(e) => error!("Unable to insert event, err {}:", e),
     };
+}
+
+pub async fn update_executed(pg_pool: Arc<PgPool>, event: &DbContractCallApprovedEvent) -> std::result::Result<PgQueryResult, Error> {
+    sqlx::query!(
+                        "UPDATE contract_call_approved_events SET broadcast_status = $1 WHERE id = $2",
+                        "executed",
+                        &event.id
+                    )
+        .execute(pg_pool.as_ref())
+        .await.context("Failed to update contract_call_approved_events")
 }
