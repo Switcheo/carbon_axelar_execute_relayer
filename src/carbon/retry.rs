@@ -16,7 +16,7 @@ use crate::db::carbon_events::{add_bridge_pending_action_event_retry_count, dele
 use crate::db::DbPendingActionEvent;
 use crate::fee::fee::has_enough_fees;
 use crate::util::carbon::msg::{MsgPruneExpiredPendingActions, MsgStartRelay};
-use crate::util::carbon::query::get_pending_action_nonces;
+use crate::util::carbon::query::{get_pending_action, get_pending_action_nonces};
 
 #[instrument(name = "retry_carbon", skip_all)]
 pub async fn init_all(carbon_config: &Carbon, fee_config: &Fee, pg_pool: Arc<PgPool>, carbon_broadcaster: Sender<BroadcastRequest>) {
@@ -47,18 +47,18 @@ async fn retry_pending_actions(carbon_config: &Carbon, fee_config: &Fee, pool: A
     debug!("Checking for pending_action_events to broadcast...");
     let events: Vec<DbPendingActionEvent> = sqlx::query_as!(
         DbPendingActionEvent,
-        "SELECT * FROM pending_action_events WHERE retry_count < $1",
+        "SELECT * FROM pending_action_events WHERE retry_count < $1 AND (relay_details ->> 'expiry_block_time')::timestamp < NOW()",
         carbon_config.maximum_start_relay_retry_count
     )
         .fetch_all(&*pool)
         .await?;
 
     for pending_action_event in events {
-        info!("DB pending_action_event found: {:?}", pending_action_event);
         let relay_details = pending_action_event.get_relay_details();
         if relay_details.has_expired() {
             continue
         }
+        info!("DB pending_action_event found: {:?}", pending_action_event);
         if has_enough_fees(&fee_config, pending_action_event.clone()).await {
             queue_start_relay(&carbon_config, pool.clone(), carbon_broadcaster.clone(), pending_action_event.nonce).await;
         }
@@ -71,6 +71,11 @@ pub async fn queue_start_relay(carbon_config: &Carbon, pool: Arc<PgPool>, carbon
     info!("Starting relay on {:?} for nonce {:?}", &carbon_config.rpc_url, &nonce);
     // Convert nonce to u64
     let nonce = nonce.to_u64().expect("could not convert nonce to u64");
+
+    // Check carbon if we still need to start this relay
+    if !is_awaiting_relay(carbon_config, nonce).await {
+        info!("Nonce {:?} is no longer pending and no longer needs to be start", nonce);
+    }
 
     // Create a oneshot channel for the response
     let (callback_tx, callback_rx) = oneshot::channel();
@@ -115,6 +120,22 @@ pub async fn queue_start_relay(carbon_config: &Carbon, pool: Arc<PgPool>, carbon
     }
 }
 
+async fn is_awaiting_relay(carbon_config: &Carbon, nonce: u64) -> bool {
+    let action = get_pending_action(&carbon_config.rest_url, nonce).await;
+    match action {
+        Ok(pending_action_event) => {
+            let relay_details = pending_action_event.get_relay_details();
+            let is_expired = relay_details.has_expired();
+            let is_sent = relay_details.is_sent();
+            !(is_expired || is_sent)
+        }
+        Err(err) => {
+            error!("Error checking on action carbon: {:?}", err);
+            false
+        }
+    }
+}
+
 // Checks the DB for events that can be expired and enqueues them into the broadcast channel
 async fn expire_pending_actions(carbon_config: &Carbon, pool: Arc<PgPool>, carbon_broadcaster: Sender<BroadcastRequest>) -> Result<()> {
     // Check for new events
@@ -127,6 +148,7 @@ async fn expire_pending_actions(carbon_config: &Carbon, pool: Arc<PgPool>, carbo
 
     // Early return if empty
     if expired_nonces.is_empty() {
+        info!("No expired pending_action_events found in the DB");
         return Ok(());
     }
 

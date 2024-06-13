@@ -1,7 +1,8 @@
-use anyhow::{anyhow,Result};
+use anyhow::{anyhow, Context, Result};
 use reqwest::Client;
 use serde_json::Value;
 use tracing::info;
+use crate::db::DbPendingActionEvent;
 
 pub async fn get_pending_action_nonces(rest_url: &str) -> Result<Vec<u64>> {
     let client = Client::new();
@@ -18,4 +19,13 @@ pub async fn get_pending_action_nonces(rest_url: &str) -> Result<Vec<u64>> {
 
     info!("found pending action nonces {:?}", nonces);
     Ok(nonces)
+}
+
+pub async fn get_pending_action(rest_url: &str, nonce: u64) -> Result<DbPendingActionEvent> {
+    let client = Client::new();
+    let url = format!("{}/carbon/bridge/v1/pending_action/{}", rest_url, nonce);
+    let resp: Value = client.get(&url).send().await?.json().await?;
+    let action: DbPendingActionEvent = serde_json::from_value(resp["action"].clone())
+        .context("Failed to deserialize action")?;
+    Ok(action)
 }
