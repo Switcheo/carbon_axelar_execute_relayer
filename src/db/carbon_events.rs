@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use anyhow::{Context,Result};
 use sqlx::PgPool;
-use sqlx::types::BigDecimal;
 use tracing::{error, info};
 use crate::db::{DbAxelarCallContractEvent, DbPendingActionEvent};
 
@@ -13,7 +12,7 @@ pub async fn get_axelar_call_contract_event(pg_pool: Arc<PgPool>, payload_hash: 
         .fetch_optional(pg_pool.as_ref()).await.context("sql query error for axelar_call_contract_events")
 }
 
-pub async fn get_pending_action_by_nonce(pg_pool: Arc<PgPool>, nonce: &BigDecimal) -> Result<Option<DbPendingActionEvent>> {
+pub async fn get_pending_action_by_nonce(pg_pool: Arc<PgPool>, nonce: i64) -> Result<Option<DbPendingActionEvent>> {
     sqlx::query_as::<_, DbPendingActionEvent>(
         "SELECT * FROM pending_action_events WHERE nonce = $1",
     )
@@ -21,7 +20,7 @@ pub async fn get_pending_action_by_nonce(pg_pool: Arc<PgPool>, nonce: &BigDecima
         .fetch_optional(pg_pool.as_ref()).await.context("sql query error for pending_action_events")
 }
 
-pub async fn get_chain_id_for_nonce(pg_pool: Arc<PgPool>, nonce: &BigDecimal) -> Result<Option<String>> {
+pub async fn get_chain_id_for_nonce(pg_pool: Arc<PgPool>, nonce: i64) -> Result<Option<String>> {
     let result = get_pending_action_by_nonce(pg_pool, nonce).await?;
     match result {
         Some(event) => Ok(Some(event.chain_id)),
@@ -61,7 +60,7 @@ pub async fn save_bridge_pending_action_event(pg_pool: Arc<PgPool>, event: &DbPe
     }
 }
 
-pub async fn delete_bridge_pending_action_event(pg_pool: Arc<PgPool>, nonce: BigDecimal) {
+pub async fn delete_bridge_pending_action_event(pg_pool: Arc<PgPool>, nonce: i64) {
     let result = sqlx::query!(
                         "DELETE FROM pending_action_events where nonce = $1",
                         nonce,
@@ -75,7 +74,7 @@ pub async fn delete_bridge_pending_action_event(pg_pool: Arc<PgPool>, nonce: Big
     }
 }
 
-pub async fn delete_bridge_pending_action_events(pg_pool: Arc<PgPool>, nonces_to_delete: Vec<u64>) -> Result<()> {
+pub async fn delete_bridge_pending_action_events(pg_pool: Arc<PgPool>, nonces_to_delete: Vec<i64>) -> Result<()> {
     let query = format!(
         "DELETE FROM pending_action_events WHERE nonce IN ({})",
         nonces_to_delete
@@ -93,10 +92,10 @@ pub async fn delete_bridge_pending_action_events(pg_pool: Arc<PgPool>, nonces_to
     Ok(())
 }
 
-pub async fn add_bridge_pending_action_event_retry_count(pg_pool: Arc<PgPool>, nonce: u64) -> Result<()> {
+pub async fn add_bridge_pending_action_event_retry_count(pg_pool: Arc<PgPool>, nonce: i64) -> Result<()> {
     let _ = sqlx::query!(
         "UPDATE pending_action_events SET retry_count = retry_count + 1 WHERE nonce = $1",
-        BigDecimal::from(nonce)
+        nonce
     )
         .execute(pg_pool.as_ref())
         .await.context("Failed to add retry count for pending_action_events");

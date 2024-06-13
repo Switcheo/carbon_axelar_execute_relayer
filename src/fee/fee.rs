@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use tracing::{info};
+use tracing::{debug};
 
 use crate::conf::{Fee, RelayStrategy};
 use crate::db::{DbPendingActionEvent};
@@ -19,8 +19,7 @@ pub struct FeeResponse {
 
 pub async fn has_enough_fees(fee_config: &Fee, pending_action: DbPendingActionEvent) -> bool {
     let relay_details = pending_action.get_relay_details();
-    info!("relay_details from Carbon {:?}", relay_details);
-    info!("fee: {:?}", relay_details.fee);
+    debug!("relay_details from Carbon {:?}", relay_details);
     match fee_config.relay_strategy {
         RelayStrategy::Hydrogen => check_hydrogen_strategy(fee_config, &relay_details, &pending_action).await,
         RelayStrategy::All => check_all_strategy(),

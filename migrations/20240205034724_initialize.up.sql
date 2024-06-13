@@ -5,7 +5,7 @@ CREATE TABLE pending_action_events
     connection_id           TEXT        NOT NULL CHECK (connection_id <> ''),
     bridge_id               TEXT        NOT NULL CHECK (bridge_id <> ''),
     chain_id                TEXT        NOT NULL CHECK (chain_id <> ''),
-    nonce                   NUMERIC     NOT NULL UNIQUE,
+    nonce                   BIGINT     NOT NULL UNIQUE,
     pending_action_type     INTEGER     NOT NULL,
     retry_count             INTEGER     NOT NULL,
     relay_details           JSONB       NOT NULL
@@ -14,7 +14,7 @@ CREATE TABLE pending_action_events
 CREATE TABLE axelar_call_contract_events
 (
     id               SERIAL PRIMARY KEY,
-    nonce            NUMERIC NOT NULL,
+    nonce            BIGINT NOT NULL,
     payload_hash     TEXT    NOT NULL UNIQUE CHECK (payload_hash <> ''),
     payload          TEXT    NOT NULL CHECK (payload <> ''),
     payload_encoding TEXT    NOT NULL CHECK (payload_encoding <> '')

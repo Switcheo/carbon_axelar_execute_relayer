@@ -81,16 +81,16 @@ pub async fn sync_block_range(conf: AppConfig, pg_pool: Arc<PgPool>, start_heigh
     // Find and save EVM event for each new payload_hash found
     // TODO: can be refactored and optimized to pass in multiple payload_hashes
     for event in saved_call_contract_events {
-        let chain_id_result = get_chain_id_for_nonce(pg_pool.clone(), &event.nonce).await;
+        let chain_id_result = get_chain_id_for_nonce(pg_pool.clone(), event.nonce).await;
         let chain_id = match chain_id_result {
             Ok(chain_id) => {
                 match chain_id {
                     Some(chain_id) => {
-                        info!("Found matching event pending_action_events in DB with nonce: {:?}", &event.nonce);
+                        info!("Found matching event pending_action_events in DB with nonce: {:?}", event.nonce);
                         chain_id
                     },
                     None => {
-                        warn!("Skipping as nonce {:?} does not exist in DB on pending_action_events table", &event.nonce);
+                        warn!("Skipping as nonce {:?} does not exist in DB on pending_action_events table", event.nonce);
                         continue
                     }
                 }
@@ -112,7 +112,7 @@ pub async fn sync_block_range(conf: AppConfig, pg_pool: Arc<PgPool>, start_heigh
 
 async fn should_save_call_contract_event(pg_pool: Arc<PgPool>, axelar_call_contract_event: &DbAxelarCallContractEvent) -> bool {
     // check if nonce exist on pending_action_events table
-    let result = get_pending_action_by_nonce(pg_pool.clone(), &axelar_call_contract_event.nonce).await;
+    let result = get_pending_action_by_nonce(pg_pool.clone(), axelar_call_contract_event.nonce).await;
     match result {
         Ok(Some(_)) => true,
         Ok(None) => false,

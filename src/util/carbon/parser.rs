@@ -4,6 +4,7 @@ use base64::Engine;
 use base64::engine::general_purpose;
 use ethers::utils::hex::encode_prefixed;
 use ethers::utils::keccak256;
+use num_traits::ToPrimitive;
 use sqlx::types::BigDecimal;
 
 use crate::db::{BridgeRevertedEvent, DbAxelarCallContractEvent, DbPendingActionEvent, ExpiredPendingActionEvent};
@@ -23,6 +24,7 @@ pub fn parse_bridge_pending_action_event(event: Event) -> DbPendingActionEvent {
     let nonce = event.attributes.iter().find(|a| a.key == "nonce").map(|a| a.value.clone()).unwrap_or_default();
     let nonce = BigDecimal::from_str(strip_quotes(&nonce))
         .expect("Failed to parse nonce into BigDecimal");
+    let nonce = nonce.to_i64().unwrap();
     let pending_action_type = event.attributes.iter().find(|a| a.key == "pending_action_type").map(|a| a.value.clone()).unwrap_or_default();
     let pending_action_type = strip_quotes(&pending_action_type).parse::<i32>()
         .expect("Failed to parse pending_action_type into integer");
@@ -45,6 +47,7 @@ pub fn parse_expired_pending_action_event(event: Event) -> ExpiredPendingActionE
     let nonce = event.attributes.iter().find(|a| a.key == "nonce").map(|a| a.value.clone()).unwrap_or_default();
     let nonce = BigDecimal::from_str(strip_quotes(&nonce))
         .expect("Failed to parse nonce into BigDecimal");
+    let nonce = nonce.to_i64().unwrap();
     let pending_action_type = event.attributes.iter().find(|a| a.key == "pending_action_type").map(|a| a.value.clone()).unwrap_or_default();
     let pending_action_type = strip_quotes(&pending_action_type).parse::<i32>()
         .expect("Failed to parse pending_action_type into integer");
@@ -72,6 +75,7 @@ pub fn parse_bridge_reverted_event(event: Event) -> BridgeRevertedEvent {
     let nonce = event.attributes.iter().find(|a| a.key == "nonce").map(|a| a.value.clone()).unwrap_or_default();
     let nonce = BigDecimal::from_str(strip_quotes(&nonce))
         .expect("Failed to parse nonce into BigDecimal");
+    let nonce = nonce.to_i64().unwrap();
 
     return BridgeRevertedEvent {
         id: -1,
@@ -86,6 +90,7 @@ pub fn parse_axelar_call_contract_event(event: Event) -> DbAxelarCallContractEve
     let nonce = event.attributes.iter().find(|a| a.key == "nonce").map(|a| a.value.clone()).unwrap_or_default();
     let nonce = BigDecimal::from_str(strip_quotes(&nonce))
         .expect("Failed to parse nonce into BigDecimal");
+    let nonce = nonce.to_i64().unwrap();
     // let payload_encoding = event.attributes.iter().find(|a| a.key == "payload_encoding").map(|a| a.value.clone()).unwrap_or_default();
     // let payload_encoding = strip_quotes(&payload_encoding).to_string();
     let payload = event.attributes.iter().find(|a| a.key == "payload").map(|a| a.value.clone()).unwrap_or_default();

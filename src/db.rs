@@ -23,13 +23,13 @@ pub enum PendingActionType {
 }
 
 // carbon
-#[derive(Debug, Clone, PartialEq, FromRow)]
+#[derive(Debug, Clone, PartialEq, FromRow, Deserialize, Serialize)]
 pub struct DbPendingActionEvent {
     pub id: i32,
     pub connection_id: String,
     pub bridge_id: String,
     pub chain_id: String,
-    pub nonce: BigDecimal,
+    pub nonce: i64,
     pub pending_action_type: i32,
     pub retry_count: i32,
     pub relay_details: JsonValue,
@@ -38,7 +38,7 @@ pub struct DbPendingActionEvent {
 // carbon
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExpiredPendingActionEvent {
-    pub nonce: BigDecimal,
+    pub nonce: i64,
     pub pending_action_type: i32,
     pub connection_id: String,
     pub relay_details: JsonValue,
@@ -51,7 +51,7 @@ pub struct BridgeAcknowledgedEvent {
     pub bridge_id: String,
     pub chain_id: String,
     pub gateway_address: String,
-    pub nonce: BigDecimal,
+    pub nonce: i64,
 }
 
 // carbon
@@ -61,14 +61,14 @@ pub struct BridgeRevertedEvent {
     pub bridge_id: String,
     pub chain_id: String,
     pub gateway_address: String,
-    pub nonce: BigDecimal,
+    pub nonce: i64,
 }
 
 // carbon
 #[derive(Debug, Clone, PartialEq, FromRow)]
 pub struct DbAxelarCallContractEvent {
     pub id: i32,
-    pub nonce: BigDecimal,
+    pub nonce: i64,
     pub payload_hash: String, // hex string
     pub payload: String, // hex string
     pub payload_encoding: String,
@@ -96,9 +96,8 @@ pub struct RelayDetails {
     pub fee_sender_address: String,
     pub fee: Json<Coin>,
     pub expiry_block_time: pbjson_types::Timestamp,
-    // don't support as it can have null values, if we need this in the future, we can create a custom deserializer to deserialize this
-    // #[serde(deserialize_with = "deserialize_str_as_u64")]
-    // pub created_at: Option<u64>,
+    pub created_at: pbjson_types::Timestamp,
+    pub sent_at: Option<pbjson_types::Timestamp>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -189,6 +188,10 @@ impl RelayDetails {
         let current_time = Utc::now();
         let time_difference = current_time - expiry_time;
         time_difference_str(time_difference)
+    }
+
+    pub fn is_sent(&self) -> bool {
+        self.sent_at.is_some()
     }
 }
 
