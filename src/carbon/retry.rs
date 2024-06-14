@@ -15,7 +15,7 @@ use crate::db::carbon_events::{add_bridge_pending_action_event_retry_count, dele
 use crate::db::DbPendingActionEvent;
 use crate::fee::fee::has_enough_fees;
 use crate::util::carbon::msg::{MsgPruneExpiredPendingActions, MsgStartRelay};
-use crate::util::carbon::query::{get_pending_action, get_pending_action_nonces};
+use crate::util::carbon::query::{get_pending_action_relay_details, get_pending_action_nonces};
 
 #[instrument(name = "retry_carbon", skip_all)]
 pub async fn init_all(carbon_config: &Carbon, fee_config: &Fee, pg_pool: Arc<PgPool>, carbon_broadcaster: Sender<BroadcastRequest>) {
@@ -119,10 +119,9 @@ pub async fn queue_start_relay(carbon_config: &Carbon, pool: Arc<PgPool>, carbon
 }
 
 async fn is_awaiting_relay(carbon_config: &Carbon, nonce: i64) -> bool {
-    let action = get_pending_action(&carbon_config.rest_url, nonce).await;
-    match action {
-        Ok(pending_action_event) => {
-            let relay_details = pending_action_event.get_relay_details();
+    let relay_details = get_pending_action_relay_details(&carbon_config.rest_url, nonce).await;
+    match relay_details {
+        Ok(relay_details) => {
             let is_expired = relay_details.has_expired();
             let is_sent = relay_details.is_sent();
             !(is_expired || is_sent)

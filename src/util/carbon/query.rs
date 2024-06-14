@@ -1,8 +1,8 @@
 use anyhow::{anyhow, Context, Result};
 use reqwest::Client;
-use serde_json::Value;
+use serde_json::{from_value, Value};
 use tracing::info;
-use crate::db::DbPendingActionEvent;
+use crate::db::{RelayDetails};
 
 pub async fn get_pending_action_nonces(rest_url: &str) -> Result<Vec<i64>> {
     let client = Client::new();
@@ -21,14 +21,15 @@ pub async fn get_pending_action_nonces(rest_url: &str) -> Result<Vec<i64>> {
     Ok(nonces)
 }
 
-pub async fn get_pending_action(rest_url: &str, nonce: i64) -> Result<DbPendingActionEvent> {
+pub async fn get_pending_action_relay_details(rest_url: &str, nonce: i64) -> Result<RelayDetails> {
     let client = Client::new();
     let url = format!("{}/carbon/bridge/v1/pending_action/{}", rest_url, nonce);
     let resp: Value = client.get(&url).send().await?.json().await?;
     let action_str = resp["action"]
         .as_str()
         .context("Failed to get action as string")?;
-    let action: DbPendingActionEvent = serde_json::from_str(action_str)
+    let action: Value = serde_json::from_str(action_str)
         .context("Failed to deserialize action")?;
-    Ok(action)
+    let relay_details: RelayDetails = from_value(action["relay_details"].clone()).expect("cannot parse relay_details");
+    Ok(relay_details)
 }

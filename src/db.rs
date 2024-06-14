@@ -92,6 +92,7 @@ pub struct DbContractCallApprovedEvent {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RelayDetails {
+    #[serde(default)]
     pub fee_receiver_address: String,
     pub fee_sender_address: String,
     pub fee: Json<Coin>,
