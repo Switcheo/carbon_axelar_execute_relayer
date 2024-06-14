@@ -19,12 +19,9 @@ pub async fn expire_pending_actions(carbon_config: &Carbon, nonces: Vec<u64>) {
     match response {
         Ok(value) => {
             info!("Received successful response: {:?}", value);
-            // TODO: Update the database here
         }
         Err(e) => {
             eprintln!("Failed to broadcast message: {:?}", e);
-            // Handle the error and possibly update the DB to reflect the failure
-            // TODO: update db back to pending?
         }
     }
 }

@@ -19,12 +19,10 @@ pub async fn start_relay(carbon_config: &Carbon, nonce: u64) {
     match response {
         Ok(value) => {
             info!("Received successful response: {:?}", value);
-            // TODO: Update the database here
         }
         Err(e) => {
             eprintln!("Failed to broadcast message: {:?}", e);
             // Handle the error and possibly update the DB to reflect the failure
-            // TODO: update db back to pending?
         }
     }
 }

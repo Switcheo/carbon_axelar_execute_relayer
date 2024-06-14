@@ -183,7 +183,7 @@ message MsgAxelarCallContract {
   string destination_chain = 2;
   // the address on destination chain
   string destination_address = 3;
-  // abi encoded bytes TODO: give abi encoding example?
+  // abi encoded bytes
   bytes payload = 4;
 }
 
@@ -210,7 +210,7 @@ message MsgAxelarCallContractWithToken {
     (gogoproto.customtype) = "github.com/cosmos/cosmos-sdk/types.Coin",
     (gogoproto.nullable) = false
   ];
-  // abi encoded bytes TODO: give abi encoding example?
+  // abi encoded bytes
   bytes payload = 5;
 }
 

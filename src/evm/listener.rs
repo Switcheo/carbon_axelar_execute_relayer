@@ -53,11 +53,14 @@ async fn init_ws(chain_config: Chain, pg_pool: Arc<PgPool>) -> Result<()> {
 
     info!("Starting to watch {:?} {:?} for {:?} filtered by carbon contract: {:?}", &chain_config.chain_id, &chain_config.axelar_gateway_proxy, EVM_CONTRACT_CALL_APPROVED_EVENT, &chain_config.carbon_axelar_gateway);
     while let Some(log) = events.next().await {
-        // TODO: extract to separate thread?
         info!("found an event on {:?} {:?} for {:?} filtered by carbon contract: {:?}", &chain_config.chain_id, &chain_config.axelar_gateway_proxy, EVM_CONTRACT_CALL_APPROVED_EVENT, &chain_config.carbon_axelar_gateway);
         match log {
             Ok(event) => {
-                save_call_contract_approved_event(chain_config.clone(), pg_pool.clone(), event).await;
+                let chain_config = chain_config.clone();
+                let pg_pool = pg_pool.clone();
+                let _ = tokio::spawn(async move {
+                    save_call_contract_approved_event(chain_config.clone(), pg_pool.clone(), event).await;
+                });
             }
             Err(e) => error!("Error listening for ContractCallApprovedEvent logs: {:?}", e),
         }

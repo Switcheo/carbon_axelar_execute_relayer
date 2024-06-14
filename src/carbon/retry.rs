@@ -216,18 +216,14 @@ pub async fn queue_expire_relay(carbon_config: &Carbon, carbon_broadcaster: Send
             match response {
                 Ok(value) => {
                     info!("Received successful response: {:?}", value);
-                    // TODO: Update the database here
                 }
                 Err(e) => {
                     eprintln!("Failed to broadcast message: {:?}", e);
-                    // Handle the error and possibly update the DB to reflect the failure
-                    // TODO: update db back to pending?
                 }
             }
         }
         Err(e) => {
             eprintln!("Failed to receive callback response: {:?}", e);
-            // Handle the error and possibly update the DB to reflect the failure
         }
     }
 }

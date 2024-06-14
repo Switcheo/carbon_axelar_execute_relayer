@@ -220,7 +220,7 @@ pub struct MsgAxelarCallContract {
     /// the address on destination chain
     #[prost(string, tag="3")]
     pub destination_address: ::prost::alloc::string::String,
-    /// abi encoded bytes TODO: give abi encoding example?
+    /// abi encoded bytes
     #[prost(bytes="vec", tag="4")]
     pub payload: ::prost::alloc::vec::Vec<u8>,
 }
@@ -249,7 +249,7 @@ pub struct MsgAxelarCallContractWithToken {
     /// convert them to ibc equivalent on carbon
     #[prost(message, optional, tag="4")]
     pub tokens: ::core::option::Option<::cosmos_sdk_proto::cosmos::base::v1beta1::Coin>,
-    /// abi encoded bytes TODO: give abi encoding example?
+    /// abi encoded bytes
     #[prost(bytes="vec", tag="5")]
     pub payload: ::prost::alloc::vec::Vec<u8>,
 }

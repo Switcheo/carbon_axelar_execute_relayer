@@ -108,9 +108,13 @@ async fn process_bridge_pending_action(carbon_config: &Carbon, fee_config: &Fee,
         save_bridge_pending_action_event(pg_pool.clone(), &pending_action.clone()).await;
 
         // start the relay
-        // TODO: separate thread?
+        let pg_pool = pg_pool.clone();
+        let carbon_config = carbon_config.clone();
+        let carbon_broadcaster = carbon_broadcaster.clone();
         if has_enough_fees(fee_config, pending_action.clone()).await {
-            queue_start_relay(carbon_config, pg_pool.clone(), carbon_broadcaster.clone(), pending_action.nonce).await;
+            let _ = tokio::spawn(async move {
+                queue_start_relay(&carbon_config.clone(), pg_pool.clone(), carbon_broadcaster.clone(), pending_action.nonce).await;
+            });
         }
     }
 }

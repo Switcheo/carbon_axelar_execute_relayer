@@ -42,7 +42,7 @@ pub struct TxResult {
 // 1) sync from carbon's start block height to end block height to find relevant txs
 // 2) loop through all event's payload_hash and sync evm txs based on the payload_hash found
 // 3) save to db, running relayer will continue and broadcast if needed
-pub async fn sync_block_range(conf: AppConfig, pg_pool: Arc<PgPool>, start_height: u64, end_height: u64) -> Result<()> {
+pub async fn sync_block_range(conf: AppConfig, pg_pool: Arc<PgPool>, start_height: u64, end_height: u64, evm_sync_from: Option<u64>) -> Result<()> {
     info!("Syncing {:?} from blocks {} to {}", &conf.carbon.rpc_url, start_height, end_height);
 
     // Find and save CARBON_BRIDGE_PENDING_ACTION_EVENT event
@@ -79,7 +79,6 @@ pub async fn sync_block_range(conf: AppConfig, pg_pool: Arc<PgPool>, start_heigh
     }
 
     // Find and save EVM event for each new payload_hash found
-    // TODO: can be refactored and optimized to pass in multiple payload_hashes
     for event in saved_call_contract_events {
         let chain_id_result = get_chain_id_for_nonce(pg_pool.clone(), event.nonce).await;
         let chain_id = match chain_id_result {
@@ -104,7 +103,7 @@ pub async fn sync_block_range(conf: AppConfig, pg_pool: Arc<PgPool>, start_heigh
         let chain_config = conf.evm_chains.iter().find(|a| a.chain_id == chain_id).unwrap();
         let chain_config = chain_config.clone();
         // save corresponding evm event
-        save_contract_call_approved_events(chain_config, pg_pool.clone(), &event.payload_hash).await.context("save contract call approved event failed")?;
+        save_contract_call_approved_events(chain_config, pg_pool.clone(), &event.payload_hash, evm_sync_from).await.context("save contract call approved event failed")?;
     }
 
     Ok(())
@@ -147,7 +146,7 @@ async fn abci_query(carbon_rpc_url: &str, query: &str) -> Result<JsonRpcResult> 
 }
 
 #[instrument(name = "tx_sync::save_contract_call_approved_events", skip_all, fields(chain = chain_config.chain_id))]
-async fn save_contract_call_approved_events(chain_config: Chain, pg_pool: Arc<PgPool>, payload_hash: &str) -> Result<()> {
+async fn save_contract_call_approved_events(chain_config: Chain, pg_pool: Arc<PgPool>, payload_hash: &str, override_from_block: Option<u64>) -> Result<()> {
     let provider = Provider::<Http>::try_from(&chain_config.rpc_url)?;
     let provider = Arc::new(provider);
 
@@ -161,11 +160,12 @@ async fn save_contract_call_approved_events(chain_config: Chain, pg_pool: Arc<Pg
     let topic3 = payload_hash.parse::<H256>().context("payload_hash parse failed")?;
 
     // specify range of blocks to search
-    // TODO: create a config to allow specifying evm block range outside of the limit for older txs because the current algorithm only looks for the most recent `max_query_blocks` blocks
     let current_block = provider.get_block_number().await?.as_u64();
 
     // Calculate the starting block to only search the latest x blocks
     let from_block = if current_block > chain_config.max_query_blocks - 1 { current_block - chain_config.max_query_blocks } else { 0 };
+    // Use override value if it exists
+    let from_block = if override_from_block.is_some() { override_from_block.unwrap() } else { from_block };
 
     let event = ContractCallApprovedEvent::new::<_, Provider<Http>>(
         Filter::new().address(address)

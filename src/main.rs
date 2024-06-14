@@ -59,6 +59,9 @@ enum Commands {
         /// End block height for resync
         #[arg(value_name = "END_HEIGHT")]
         end_height: u64,
+        /// Optional start block height for EVM sync
+        #[arg(short, long, value_name = "EVM_SYNC_FROM")]
+        evm_sync_from: Option<u64>,
     },
     /// Start relay on Carbon for a nonce
     StartRelay {
@@ -160,9 +163,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // TODO: implement
             info!("NYI, input: {}", tx_hash);
         },
-        Some(Commands::SyncFrom { start_height, end_height }) => {
+        Some(Commands::SyncFrom { start_height, end_height, evm_sync_from }) => {
             // Call a function to handle the sync logic for a range of block heights
-            operational::tx_sync::sync_block_range(conf.clone(), pg_pool.clone(), *start_height, *end_height).await?;
+            operational::tx_sync::sync_block_range(conf.clone(), pg_pool.clone(), *start_height, *end_height, *evm_sync_from).await?;
         }
         Some(Commands::StartRelay { nonce }) => {
             // Call a function to handle the starting the relay
