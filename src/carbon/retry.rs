@@ -73,6 +73,7 @@ pub async fn queue_start_relay(carbon_config: &Carbon, pool: Arc<PgPool>, carbon
     // Check carbon if we still need to start this relay
     if !is_awaiting_relay(carbon_config, nonce).await {
         info!("Nonce {:?} is no longer pending and no longer needs to be started", nonce);
+        return
     }
 
     // Create a oneshot channel for the response
