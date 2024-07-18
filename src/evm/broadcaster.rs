@@ -108,7 +108,7 @@ async fn init_channels(evm_chains: Vec<Chain>, pg_pool: Arc<PgPool>) -> HashMap<
 
 
 #[instrument(name = "broadcaster_evm::receive_and_broadcast", skip_all, fields(chain = chain.chain_id))]
-async fn receive_and_broadcast(chain: Chain, mut rx: Receiver<DbContractCallApprovedEvent>, pg_pool: Arc<PgPool>) -> Result<()> {
+pub async fn receive_and_broadcast(chain: Chain, mut rx: Receiver<DbContractCallApprovedEvent>, pg_pool: Arc<PgPool>) -> Result<()> {
     let provider = init_provider(chain.clone()).await?;
     let axelar_gateway = chain.axelar_gateway_proxy.parse::<Address>()?;
     let axelar_gateway = IAxelarGateway::new(axelar_gateway, provider.clone());
@@ -170,7 +170,7 @@ async fn receive_and_broadcast(chain: Chain, mut rx: Receiver<DbContractCallAppr
     })
 }
 
-async fn init_provider(chain: Chain) -> Result<Arc<SignerMiddleware<Provider<Http>, Wallet<SigningKey>>>> {
+pub async fn init_provider(chain: Chain) -> Result<Arc<SignerMiddleware<Provider<Http>, Wallet<SigningKey>>>> {
     let provider = Provider::<Http>::try_from(chain.rpc_url)
         .context("Failed to connect to the network")?;
     let chain_id = provider.get_chainid().await
@@ -183,7 +183,7 @@ async fn init_provider(chain: Chain) -> Result<Arc<SignerMiddleware<Provider<Htt
 }
 
 #[instrument(skip_all, fields(payload_hash = event.payload_hash))]
-async fn broadcast_tx(chain: Chain, event: DbContractCallApprovedEvent, provider: Arc<SignerMiddleware<Provider<Http>, Wallet<SigningKey>>>) -> Result<()> {
+pub async fn broadcast_tx(chain: Chain, event: DbContractCallApprovedEvent, provider: Arc<SignerMiddleware<Provider<Http>, Wallet<SigningKey>>>) -> Result<()> {
     let executable = chain.carbon_axelar_gateway.parse::<Address>()?;
     let executable = IAxelarExecutable::new(executable, provider.clone());
 

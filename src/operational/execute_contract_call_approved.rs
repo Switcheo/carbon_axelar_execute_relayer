@@ -1,28 +1,53 @@
-use cosmrs::tx::Msg;
+use anyhow::{Context,Result};
+use ethers::abi::RawLog;
+use ethers::prelude::{EthEvent, H256, Middleware};
+use sqlx::types::BigDecimal;
 use tracing::info;
-use crate::conf::Carbon;
-use crate::util::carbon::msg::MsgStartRelay;
-use crate::util::carbon::tx::{send_msg_via_tx};
 
-pub async fn start_relay(carbon_config: &Carbon, nonce: u64) {
-    info!("Starting relay on {:?} for nonce: {:?} ", &carbon_config.rpc_url, nonce);
-    let msg_start_relay = MsgStartRelay {
-        relayer: carbon_config.relayer_address.clone(),
-        nonce,
-    }
-        .to_any()
-        .unwrap();
+use crate::conf::{Chain};
+use crate::db::DbContractCallApprovedEvent;
+use crate::evm::broadcaster::{broadcast_tx, init_provider};
+use crate::util::evm::ContractCallApprovedEvent;
 
-    // send msg via a tx
-    let response = send_msg_via_tx(carbon_config, msg_start_relay).await;
+// TODO: need a new strat cause we cannot just get the event, it doesn't have the full payload, maybe need get the carbon event first
+pub async fn execute_contract_call_approved(evm_chains: &Vec<Chain>, chain_id: String, tx_hash: String) -> Result<()> {
+    let chain_config = evm_chains.iter().find(|a| a.chain_id == chain_id).unwrap();
+    let chain_config = chain_config.clone();
 
-    match response {
-        Ok(value) => {
-            info!("Received successful response: {:?}", value);
+    info!("Finding ContractCallApproved event on {:?} for tx_hash: {:?} for execution", &chain_config.rpc_url, tx_hash);
+
+    // find event first
+    let provider = init_provider(chain_config.clone()).await?;
+    let tx_hash = tx_hash.parse::<H256>().context("tx_hash parse failed")?;
+
+    // Fetch the transaction receipt
+    let receipt = provider.get_transaction_receipt(tx_hash).await?.unwrap();
+
+    // Iterate through the logs to find your specific event
+    for log in receipt.logs {
+        // Decode the log
+        if let Ok(decoded_log) = ContractCallApprovedEvent::decode_log(&RawLog {
+            topics: log.topics,
+            data: log.data.to_vec(),
+        }) {
+            // Convert to DbContractCallApprovedEvent
+            let db_event = DbContractCallApprovedEvent {
+                id: 0, // Just a  random id
+                blockchain: chain_config.chain_id.clone(),
+                broadcast_status: "pending".to_string(),
+                command_id: hex::encode(decoded_log.command_id.as_bytes()),
+                source_chain: decoded_log.source_chain,
+                source_address: decoded_log.source_address,
+                contract_address: hex::encode(decoded_log.contract_address.as_bytes()),
+                payload_hash: hex::encode(decoded_log.payload_hash.as_bytes()),
+                source_tx_hash: hex::encode(decoded_log.source_tx_hash.as_bytes()),
+                source_event_index: BigDecimal::from(decoded_log.source_event_index.as_u64()),
+                payload: String::from("TODO: implement"), // Set payload appropriately
+            };
+
+            // Call broadcast_tx function
+            broadcast_tx(chain_config.clone(), db_event, provider.clone()).await?;
         }
-        Err(e) => {
-            eprintln!("Failed to broadcast message: {:?}", e);
-            // Handle the error and possibly update the DB to reflect the failure
-        }
     }
+    Ok(())
 }

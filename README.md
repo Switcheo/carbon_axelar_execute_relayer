@@ -17,6 +17,23 @@ e.g. withdrawals, or any external executions
 
 Note: relayer needs to be whitelisted on carbon
 
+## Linux dependencies (only for linux)
+```
+# install libssl-dev pkg-config
+sudo apt install libssl-dev pkg-config
+
+# install buf
+# Substitute BIN for your bin directory.
+# Substitute VERSION for the current released version.
+BIN="/usr/local/bin" && \
+VERSION="1.34.0" && \
+curl -sSL \
+"https://github.com/bufbuild/buf/releases/download/v${VERSION}/buf-$(uname -s)-$(uname -m)" \
+-o "${BIN}/buf" && \
+chmod +x "${BIN}/buf"
+
+```
+
 ## Setup
 
 #### Install rust/cargo
@@ -102,7 +119,11 @@ The way to resolve this is to manually call the cli to save the tx since it is m
 
 ```bash
 # resync from carbon's start block height to end block height to populate missed events so that they can be relayed
-cargo run -- -vv sync-from 318371 318490
+cargo run -- -vv sync-from 788086 788099
+
+# resync from carbon's start block height to end block height to populate missed events so that they can be relayed
+# specify which block to search for evm events
+cargo run -- -vv sync-from 788086 788099
 
 ```
 
@@ -134,5 +155,3 @@ buf dep update
 # generate
 buf generate
 ```
-
-

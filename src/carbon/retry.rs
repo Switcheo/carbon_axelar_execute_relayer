@@ -153,6 +153,8 @@ async fn expire_pending_actions(carbon_config: &Carbon, pool: Arc<PgPool>, carbo
     // Prune nonces that are no longer in the "pending" group
     let nonces_to_process = prune_processed_nonces(&carbon_config.rest_url, pool.clone(), &expired_nonces).await?;
 
+    // TODO: prune nonces that are already sent
+
     if !nonces_to_process.is_empty() {
         queue_expire_relay(carbon_config, carbon_broadcaster, nonces_to_process).await;
     }
