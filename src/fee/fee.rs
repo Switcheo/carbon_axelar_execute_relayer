@@ -10,11 +10,13 @@ use crate::fee::strategies::{check_all_strategy, check_greater_than_0_strategy, 
 // carbon
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FeeResponse {
+    pub deposit: String,
     pub withdraw: String,
+    pub execute: String,
+    pub withdraw_and_execute: String,
     pub register_token: String,
     pub deregister_token: String,
-    pub deploy_native_token: String,
-    pub quoted_at: String,
+    pub time_quoted_at: String,
 }
 
 pub async fn has_enough_fees(fee_config: &Fee, pending_action: DbPendingActionEvent) -> bool {

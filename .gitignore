@@ -1,5 +1,8 @@
 /target
 config.toml
+config.develop.toml
+config.testnet.toml
+config.mainnet.toml
 .env
 .idea
 carbon_axelar_execute_relayer

@@ -130,7 +130,6 @@ impl PendingActionType {
         match prefix {
             "register_token" => Ok(PendingActionType::PendingRegisterTokenType),
             "deregister_token" => Ok(PendingActionType::PendingDeregisterTokenType),
-            "deploy_native_token" => Ok(PendingActionType::PendingDeployNativeTokenType),
             _ if prefix.starts_with("withdraw_and_execute") => Ok(PendingActionType::PendingWithdrawAndExecuteType),
             _ if prefix.starts_with("withdraw") => Ok(PendingActionType::PendingWithdrawType),
             _ if prefix.starts_with("execute") => Ok(PendingActionType::PendingExecuteType),

@@ -16,12 +16,11 @@ pub async fn check_hydrogen_strategy(fee_config: &Fee, relay_details: &RelayDeta
             let hydrogen_fee_value = match pending_action_type {
                 PendingActionType::PendingRegisterTokenType => fee.register_token,
                 PendingActionType::PendingDeregisterTokenType => fee.deregister_token,
-                PendingActionType::PendingDeployNativeTokenType => fee.deploy_native_token,
                 // PendingActionType::PendingWithdrawAndExecuteType => fee.withdraw_and_execute_xxx,
                 PendingActionType::PendingWithdrawType => fee.withdraw,
                 // PendingActionType::PendingExecuteType => fee.execute_xxx,
                 _ => {
-                    error!("Unknown action type: {:?}", pending_action_type);
+                    error!("Unknown/unsupported action type: {:?}", pending_action_type);
                     return false;
                 }
             };
@@ -38,7 +37,7 @@ pub async fn check_hydrogen_strategy(fee_config: &Fee, relay_details: &RelayDeta
                 info!("Sufficient fee: {}", relay_fee);
                 true
             } else {
-                tracing::warn!("Insufficient fee: {}", relay_fee);
+                tracing::warn!("Insufficient fee: {}, min_acceptable_fee: {}", relay_fee, min_acceptable_fee);
                 false
             }
         },
