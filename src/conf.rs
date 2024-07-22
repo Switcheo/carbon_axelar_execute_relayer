@@ -48,6 +48,7 @@ pub struct Fee {
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Chain {
+    pub has_ws: bool,
     pub chain_id: String,
     pub rpc_url: String,
     pub ws_url: String,

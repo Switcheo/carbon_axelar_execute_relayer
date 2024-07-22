@@ -32,6 +32,8 @@ hydrogen_url = "http://localhost:8080"
 fee_tolerance_percentage = 5.0
 
 [[evm_chain]]
+# whether to use ws for streaming events, only if the node supports ws
+has_ws = false
 # chain id should be the same as what is found on carbon's connection
 chain_id = "bsc-testnet"
 # RPC url for broadcasting and resyncing events on EVM

@@ -154,7 +154,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let evm_pg_pool = pg_pool.clone();
             let evm_chains = conf.evm_chains.clone();
             let evm_listen_all_task = tokio::spawn(async move {
-                evm::listener::init_all_ws(evm_chains, evm_pg_pool).await;
+                evm::listener::init_all(evm_chains, evm_pg_pool).await;
             });
 
             // Spawn broadcaster_evm::init_all as a concurrent task
