@@ -56,7 +56,7 @@ async fn init_ws(chain_config: Chain, pg_pool: Arc<PgPool>) -> Result<()> {
         Filter::new().address(address).topic2(topic2),
         Arc::clone(&provider),
     );
-    let mut events = event.subscribe().await?.take(5);
+    let mut events = event.subscribe().await?;
 
     info!("Starting to watch {:?} {:?} for {:?} filtered by carbon contract: {:?}", &chain_config.chain_id, &chain_config.axelar_gateway_proxy, EVM_CONTRACT_CALL_APPROVED_EVENT, &chain_config.carbon_axelar_gateway);
     while let Some(log) = events.next().await {
@@ -96,7 +96,7 @@ async fn init_http(chain_config: Chain, pg_pool: Arc<PgPool>) -> Result<()> {
         Filter::new().address(address).topic2(topic2),
         Arc::clone(&provider),
     );
-    let mut events = event.stream().await?.take(5);
+    let mut events = event.stream().await?;
 
     info!("Starting to watch {:?} {:?} for {:?} filtered by carbon contract: {:?}", &chain_config.chain_id, &chain_config.axelar_gateway_proxy, EVM_CONTRACT_CALL_APPROVED_EVENT, &chain_config.carbon_axelar_gateway);
     while let Some(log) = events.next().await {
