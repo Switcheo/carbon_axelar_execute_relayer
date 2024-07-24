@@ -30,6 +30,10 @@ relay_strategy = "hydrogen"
 hydrogen_url = "http://localhost:8080"
 # allow up to x% less from latest fees
 fee_tolerance_percentage = 5.0
+# whitelist a list of addresses don't need to pay relay fees but will still get their action relayed
+whitelist_addresses = [
+    "tswth1734770tk39nrhfl5y8uyhfpu45n2a7r9ua22a2"
+]
 
 [[evm_chain]]
 # whether to use ws for streaming events, only if the node supports ws

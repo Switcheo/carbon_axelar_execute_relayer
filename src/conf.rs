@@ -44,6 +44,7 @@ pub struct Fee {
     pub relay_strategy: RelayStrategy,
     pub hydrogen_url: String,
     pub fee_tolerance_percentage: f64,
+    pub whitelist_addresses: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

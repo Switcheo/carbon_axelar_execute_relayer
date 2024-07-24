@@ -59,7 +59,10 @@ async fn retry_pending_actions(carbon_config: &Carbon, fee_config: &Fee, pool: A
 
     for pending_action_event in events {
         info!("DB pending_action_event found: {:?}", pending_action_event);
-        if has_enough_fees(&fee_config, pending_action_event.clone()).await {
+        let is_whitelisted = fee_config.whitelist_addresses
+            .contains(&pending_action_event.get_relay_details().fee_sender_address);
+        let has_enough_fees = has_enough_fees(&fee_config, pending_action_event.clone()).await;
+        if has_enough_fees || is_whitelisted {
             queue_start_relay(&carbon_config, pool.clone(), carbon_broadcaster.clone(), pending_action_event.nonce).await;
         }
     }

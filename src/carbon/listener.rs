@@ -111,7 +111,10 @@ async fn process_bridge_pending_action(carbon_config: &Carbon, fee_config: &Fee,
         let pg_pool = pg_pool.clone();
         let carbon_config = carbon_config.clone();
         let carbon_broadcaster = carbon_broadcaster.clone();
-        if has_enough_fees(fee_config, pending_action.clone()).await {
+        let is_whitelisted = fee_config.whitelist_addresses
+            .contains(&pending_action.get_relay_details().fee_sender_address);
+        let has_enough_fees = has_enough_fees(&fee_config, pending_action.clone()).await;
+        if has_enough_fees || is_whitelisted  {
             let _ = tokio::spawn(async move {
                 queue_start_relay(&carbon_config.clone(), pg_pool.clone(), carbon_broadcaster.clone(), pending_action.nonce).await;
             });
