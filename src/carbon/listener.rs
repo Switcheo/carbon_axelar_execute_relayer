@@ -1,19 +1,19 @@
 use std::sync::Arc;
+
 use futures::lock::Mutex;
-use sqlx::PgPool;
 use num_traits::ToPrimitive;
+use sqlx::PgPool;
 use tokio::sync::mpsc::Sender;
 use tracing::{error, info, instrument};
 use url::Url;
-use crate::carbon::broadcaster::BroadcastRequest;
-use crate::carbon::retry::queue_start_relay;
 
+use crate::carbon::broadcaster::BroadcastRequest;
+use crate::carbon::retry::{is_whitelisted_or_sufficient_fees, queue_start_relay};
 use crate::conf::{Carbon, Fee};
 use crate::constants::events::{CARBON_AXELAR_CALL_CONTRACT_EVENT, CARBON_BRIDGE_EXPIRED_PENDING_ACTION_EVENT, CARBON_BRIDGE_PENDING_ACTION_EVENT, CARBON_BRIDGE_REVERT_EVENT};
 use crate::db::carbon_events::{delete_bridge_pending_action_event, save_axelar_call_contract_event, save_bridge_pending_action_event};
-use crate::util::carbon::parser::{parse_axelar_call_contract_event, parse_expired_pending_action_event, parse_bridge_pending_action_event, parse_bridge_reverted_event};
-use crate::util::cosmos::{extract_events};
-use crate::fee::fee::{has_enough_fees};
+use crate::util::carbon::parser::{parse_axelar_call_contract_event, parse_bridge_pending_action_event, parse_bridge_reverted_event, parse_expired_pending_action_event};
+use crate::util::cosmos::extract_events;
 use crate::ws::JSONWebSocketClient;
 
 #[instrument(name = "listener_carbon", skip_all)]
@@ -111,10 +111,8 @@ async fn process_bridge_pending_action(carbon_config: &Carbon, fee_config: &Fee,
         let pg_pool = pg_pool.clone();
         let carbon_config = carbon_config.clone();
         let carbon_broadcaster = carbon_broadcaster.clone();
-        let is_whitelisted = fee_config.whitelist_addresses
-            .contains(&pending_action.get_relay_details().fee_sender_address);
-        let has_enough_fees = has_enough_fees(&fee_config, pending_action.clone()).await;
-        if has_enough_fees || is_whitelisted  {
+        let can_relay = is_whitelisted_or_sufficient_fees(fee_config, &pending_action).await;
+        if can_relay  {
             let _ = tokio::spawn(async move {
                 queue_start_relay(&carbon_config.clone(), pg_pool.clone(), carbon_broadcaster.clone(), pending_action.nonce).await;
             });

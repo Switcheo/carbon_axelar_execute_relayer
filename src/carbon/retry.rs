@@ -12,10 +12,10 @@ use tracing::{error, info, instrument};
 use crate::carbon::broadcaster::BroadcastRequest;
 use crate::conf::{Carbon, Fee};
 use crate::db::carbon_events::{add_bridge_pending_action_event_retry_count, delete_bridge_pending_action_events, get_expired_pending_action_events};
-use crate::db::DbPendingActionEvent;
+use crate::db::{DbPendingActionEvent, PendingActionType};
 use crate::fee::fee::has_enough_fees;
 use crate::util::carbon::msg::{MsgPruneExpiredPendingActions, MsgStartRelay};
-use crate::util::carbon::query::{get_pending_action_relay_details, get_pending_action_nonces};
+use crate::util::carbon::query::{get_pending_action_nonces, get_pending_action_relay_details};
 
 #[instrument(name = "retry_carbon", skip_all)]
 pub async fn init_all(carbon_config: &Carbon, fee_config: &Fee, pg_pool: Arc<PgPool>, carbon_broadcaster: Sender<BroadcastRequest>) {
@@ -58,15 +58,36 @@ async fn retry_pending_actions(carbon_config: &Carbon, fee_config: &Fee, pool: A
     }
 
     for pending_action_event in events {
-        info!("DB pending_action_event found: {:?}", pending_action_event);
-        let is_whitelisted = fee_config.whitelist_addresses
-            .contains(&pending_action_event.get_relay_details().fee_sender_address);
-        let has_enough_fees = has_enough_fees(&fee_config, pending_action_event.clone()).await;
-        if has_enough_fees || is_whitelisted {
+        info!("pending_action_event found in DB: {:?}", pending_action_event);
+        let can_relay = is_whitelisted_or_sufficient_fees(fee_config, &pending_action_event).await;
+        if can_relay {
             queue_start_relay(&carbon_config, pool.clone(), carbon_broadcaster.clone(), pending_action_event.nonce).await;
         }
     }
     Ok(())
+}
+
+// checks if whitelisted or if enough fees
+pub async fn is_whitelisted_or_sufficient_fees(fee_config: &Fee, pending_action: &DbPendingActionEvent) -> bool {
+    let relay_details = pending_action.get_relay_details();
+    let is_whitelisted = fee_config.whitelist_addresses
+        .contains(&relay_details.fee_sender_address);
+    if is_whitelisted {
+        info!("Can relay nonce {:?}: Relay address {:?} is whitelisted", pending_action.nonce, &relay_details.fee_sender_address);
+        return true
+    }
+    let is_callback_register = relay_details.fee.denom == "axlcall" && pending_action.get_pending_action_type() == PendingActionType::PendingRegisterTokenType;
+    if is_callback_register {
+        info!("Can relay nonce {:?}: PendingRegisterToken for a deployed token has a free relay for now. TODO: in the future we should check if the token registration was done by this relayer", pending_action.nonce);
+        return true
+    }
+    let has_enough_fees = has_enough_fees(&fee_config, pending_action.clone()).await;
+    if has_enough_fees {
+        info!("Can relay nonce: {:?}: has_enough_fees", pending_action.nonce);
+        return true
+    }
+    info!("Cannot relay nonce: {:?}: !(is_whitelisted || is_callback_register || has_enough_fees)", pending_action.nonce);
+    return false
 }
 
 // queue the startRelay process to broadcaster for carbon which will release fees to relayer address
@@ -74,8 +95,8 @@ pub async fn queue_start_relay(carbon_config: &Carbon, pool: Arc<PgPool>, carbon
     info!("Starting relay on {:?} for nonce {:?}", &carbon_config.rpc_url, nonce);
 
     // Check carbon if we still need to start this relay
-    if !is_awaiting_relay(carbon_config, nonce).await {
-        info!("Nonce {:?} is no longer pending and no longer needs to be started", nonce);
+    if is_expired_or_sent(carbon_config, nonce).await {
+        info!("Nonce {:?} is expired / sent or missing and will not be started", nonce);
         return
     }
 
@@ -122,16 +143,18 @@ pub async fn queue_start_relay(carbon_config: &Carbon, pool: Arc<PgPool>, carbon
     }
 }
 
-async fn is_awaiting_relay(carbon_config: &Carbon, nonce: i64) -> bool {
+
+// Checks carbon if we still need to start this relay
+async fn is_expired_or_sent(carbon_config: &Carbon, nonce: i64) -> bool {
     let relay_details = get_pending_action_relay_details(&carbon_config.rest_url, nonce).await;
     match relay_details {
         Ok(relay_details) => {
             let is_expired = relay_details.has_expired();
             let is_sent = relay_details.is_sent();
-            !(is_expired || is_sent)
+            is_expired || is_sent
         }
         Err(err) => {
-            error!("Error checking on action carbon: {:?}", err);
+            error!("Error checking action on carbon: {:?}", err);
             false
         }
     }
