@@ -75,14 +75,17 @@ enum Commands {
         #[arg(value_name = "NONCES", num_args = 1.., value_delimiter=',')]
         nonces: Vec<u64>,
     },
-    /// Start relay on Carbon for a nonce
+    /// Uses the provided tx_hash that contains a ContractCallApproved event and executes the tx
     ExecuteContractCallApproved {
         /// chain id should be the same as what is found on carbon's connection
         #[arg(value_name = "CHAIN_ID")]
         chain_id: String,
-        /// nonce to start relay
+        /// tx_hash where we can find the contract call approved event
         #[arg(value_name = "TX_HASH")]
         tx_hash: String,
+        /// hex payload sent
+        #[arg(value_name = "PAYLOAD")]
+        payload: String,
     },
     // Run
     // #[command(subcommand)]
@@ -180,9 +183,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Call a function to handle the starting the relay
             let _ = operational::start_relay::start_relay(&conf.carbon.clone(), *nonce).await;
         }
-        Some(Commands::ExecuteContractCallApproved { chain_id, tx_hash }) => {
+        Some(Commands::ExecuteContractCallApproved { chain_id, tx_hash, payload }) => {
             // Call a function to handle executing a ContractCallApproved event
-            let _ = operational::execute_contract_call_approved::execute_contract_call_approved(&conf.evm_chains.clone(), (*chain_id).clone(), (*tx_hash).clone()).await;
+            let _ = operational::execute_contract_call_approved::execute_contract_call_approved(&conf.evm_chains.clone(), (*chain_id).clone(), (*tx_hash).clone(), (*payload).clone()).await;
         }
         Some(Commands::ExpirePendingActions { nonces }) => {
             // Call a function to handle the starting the relay

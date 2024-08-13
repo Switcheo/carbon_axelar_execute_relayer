@@ -8,6 +8,7 @@ use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot;
 use tokio::time::interval;
 use tracing::{error, info, instrument};
+use tracing::log::debug;
 
 use crate::carbon::broadcaster::BroadcastRequest;
 use crate::conf::{Carbon, Fee};
@@ -43,7 +44,7 @@ async fn poll_for_pending_action_events(carbon_config: &Carbon, fee_config: &Fee
 // Checks the DB for events that can be executed and enqueues them into the broadcast channel
 async fn retry_pending_actions(carbon_config: &Carbon, fee_config: &Fee, pool: Arc<PgPool>, carbon_broadcaster: Sender<BroadcastRequest>) -> Result<()> {
     // check for new events that are not expired
-    info!("Checking for pending_action_events to broadcast...");
+    debug!("Checking for pending_action_events to broadcast...");
     let events: Vec<DbPendingActionEvent> = sqlx::query_as!(
         DbPendingActionEvent,
         "SELECT * FROM pending_action_events WHERE retry_count < $1 AND (relay_details ->> 'expiry_block_time')::timestamp > NOW()",
@@ -53,7 +54,7 @@ async fn retry_pending_actions(carbon_config: &Carbon, fee_config: &Fee, pool: A
         .await?;
 
     if events.is_empty() {
-       info!("No pending_action_events that need to be started found in the DB");
+       debug!("No pending_action_events that need to be started found in the DB");
        return Ok(())
     }
 

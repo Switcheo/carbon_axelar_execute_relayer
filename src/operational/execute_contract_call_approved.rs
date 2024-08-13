@@ -1,16 +1,30 @@
 use anyhow::{Context,Result};
+use base64::Engine;
+use base64::engine::general_purpose;
 use ethers::abi::RawLog;
 use ethers::prelude::{EthEvent, H256, Middleware};
+use ethers::utils::hex::encode_prefixed;
 use sqlx::types::BigDecimal;
-use tracing::info;
+use tracing::{error, info};
 
 use crate::conf::{Chain};
 use crate::db::DbContractCallApprovedEvent;
 use crate::evm::broadcaster::{broadcast_tx, init_provider};
 use crate::util::evm::ContractCallApprovedEvent;
 
-// TODO: need a new strat cause we cannot just get the event, it doesn't have the full payload, maybe need get the carbon event first
-pub async fn execute_contract_call_approved(evm_chains: &Vec<Chain>, chain_id: String, tx_hash: String) -> Result<()> {
+// Utility function to check if a string is hex
+fn is_hex(s: &str) -> bool {
+    let s = if s.starts_with("0x") { &s[2..] } else { s };
+    s.chars().all(|c| c.is_digit(16))
+}
+
+// Utility function to convert base64 to hex
+fn base64_to_hex(base64_str: &str) -> String {
+    let payload_bytes = general_purpose::STANDARD.decode(base64_str).unwrap();
+    encode_prefixed(&payload_bytes)
+}
+
+pub async fn execute_contract_call_approved(evm_chains: &Vec<Chain>, chain_id: String, tx_hash: String, payload: String) -> Result<()> {
     let chain_config = evm_chains.iter().find(|a| a.chain_id == chain_id).unwrap();
     let chain_config = chain_config.clone();
 
@@ -22,6 +36,19 @@ pub async fn execute_contract_call_approved(evm_chains: &Vec<Chain>, chain_id: S
 
     // Fetch the transaction receipt
     let receipt = provider.get_transaction_receipt(tx_hash).await?.unwrap();
+
+    // Convert payload to hex if necessary
+    let payload_hex = if is_hex(&payload) {
+        // Ensure it has 0x prefix
+        if payload.starts_with("0x") {
+            payload.clone()
+        } else {
+            format!("0x{}", payload)
+        }
+    } else {
+        // Convert base64 to hex
+        base64_to_hex(&payload)
+    };
 
     // Iterate through the logs to find your specific event
     for log in receipt.logs {
@@ -42,11 +69,20 @@ pub async fn execute_contract_call_approved(evm_chains: &Vec<Chain>, chain_id: S
                 payload_hash: hex::encode(decoded_log.payload_hash.as_bytes()),
                 source_tx_hash: hex::encode(decoded_log.source_tx_hash.as_bytes()),
                 source_event_index: BigDecimal::from(decoded_log.source_event_index.as_u64()),
-                payload: String::from("TODO: implement"), // Set payload appropriately
+                payload: payload_hex.clone(), // Set payload appropriately
             };
 
             // Call broadcast_tx function
-            broadcast_tx(chain_config.clone(), db_event, provider.clone()).await?;
+            // broadcast_tx(chain_config.clone(), db_event, provider.clone()).await.context("Failed broadcast");
+            match broadcast_tx(chain_config.clone(), db_event, provider.clone()).await {
+                Ok(_) => {
+                    info!("broadcast successful");
+                },
+                Err(e) => {
+                    // Handle the error, log it, and add context
+                    error!("Error broadcasting transaction: {:?}", e);
+                }
+            }
         }
     }
     Ok(())
