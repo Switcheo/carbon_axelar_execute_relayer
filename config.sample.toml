@@ -24,7 +24,7 @@ maximum_start_relay_retry_count = 12
 
 [fee]
 # the strategy the relayer will use to determine if the fees are enough for relay
-# allowed values = hydrogen, all, greater_than_0
+# allowed values = hydrogen, all, greater_than0
 relay_strategy = "hydrogen"
 # convenience hydrogen url to check the various fees
 hydrogen_url = "http://localhost:8080"

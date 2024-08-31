@@ -56,10 +56,10 @@ pub async fn save_call_contract_approved_event(chain_config: Chain, pg_pool: Arc
     };
 }
 
-pub async fn update_executed(pg_pool: Arc<PgPool>, event: &DbContractCallApprovedEvent) -> std::result::Result<PgQueryResult, Error> {
+pub async fn update_broadcast_status(pg_pool: Arc<PgPool>, event: &DbContractCallApprovedEvent, status: &str) -> std::result::Result<PgQueryResult, Error> {
     sqlx::query!(
                         "UPDATE contract_call_approved_events SET broadcast_status = $1 WHERE id = $2",
-                        "executed",
+                        status,
                         &event.id
                     )
         .execute(pg_pool.as_ref())
