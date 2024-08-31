@@ -207,7 +207,7 @@ pub async fn broadcast_tx(chain: Chain, event: DbContractCallApprovedEvent, prov
 
     // get current gas price
     let mut gas_price = provider.get_gas_price().await?;
-    gas_price = gas_price / 2;
+    gas_price = gas_price;
     let max_retries = 5;
     let mut retries = 0;
 
