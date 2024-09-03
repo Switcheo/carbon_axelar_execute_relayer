@@ -208,6 +208,7 @@ pub async fn broadcast_tx(chain: Chain, event: DbContractCallApprovedEvent, prov
     // get current gas price
     let mut gas_price = provider.get_gas_price().await?;
     gas_price = gas_price;
+    // hardcode max retries TODO: remove hardcode
     let max_retries = 5;
     let mut retries = 0;
 
@@ -275,6 +276,7 @@ pub async fn broadcast_tx(chain: Chain, event: DbContractCallApprovedEvent, prov
         if should_retry {
             if retries < max_retries {
                 retries += 1;
+                // hardcode increase by 20% TODO: remove hardcode
                 gas_price = gas_price * U256::from(12) / U256::from(10);
                 warn!("Retrying transaction with higher gas price: {:?}, in 30s", gas_price);
                 sleep(Duration::from_secs(30)).await;
