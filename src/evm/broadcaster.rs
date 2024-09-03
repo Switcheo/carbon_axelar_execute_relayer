@@ -164,7 +164,7 @@ pub async fn receive_and_broadcast(chain: Chain, mut rx: Receiver<DbContractCall
                     // Handle the error from update_executed if necessary
                     error!("Failed to update executed status: {:?}", e);
                 }
-            },
+            }
             Err(e) => {
                 // Handle the error from broadcast_tx
                 error!("Failed to broadcast transaction: {:?}", e);
@@ -226,8 +226,6 @@ pub async fn broadcast_tx(chain: Chain, event: DbContractCallApprovedEvent, prov
 
         info!("Sending execute tx for command id {}, payload_hash: {}, with evm gas price: {}, evm nonce: {}", event.command_id.clone(), event.payload_hash.clone(), gas_price.clone(), nonce.clone());
 
-        let mut should_retry = false;
-
         let send_timeout = Duration::from_secs(60);
         match timeout(send_timeout, tx.send()).await {
             Ok(Ok(pending_tx)) => match timeout(send_timeout, pending_tx).await {
@@ -247,7 +245,6 @@ pub async fn broadcast_tx(chain: Chain, event: DbContractCallApprovedEvent, prov
                 }
                 Ok(Ok(None)) => {
                     warn!("Transaction receipt not found. Retrying with higher gas price.");
-                    should_retry = true;
                 }
                 Ok(Err(e)) => {
                     error!("Failed to await transaction receipt.");
@@ -255,13 +252,11 @@ pub async fn broadcast_tx(chain: Chain, event: DbContractCallApprovedEvent, prov
                 }
                 Err(_) => {
                     error!("Awaiting transaction receipt timed out.");
-                    should_retry = true;
                 }
             },
             Ok(Err(e)) => {
                 if e.to_string().contains("already known") {
                     warn!("Transaction already known. Retrying with higher gas price.");
-                    should_retry = true;
                 } else {
                     error!("Failed to send transaction.");
                     return Err(e).context("Failed to send transaction");
@@ -269,20 +264,19 @@ pub async fn broadcast_tx(chain: Chain, event: DbContractCallApprovedEvent, prov
             }
             Err(_) => {
                 error!("Sending transaction timed out.");
-                should_retry = true;
             }
         };
 
-        if should_retry {
-            if retries < max_retries {
-                retries += 1;
-                // hardcode increase by 20% TODO: remove hardcode
-                gas_price = gas_price * U256::from(12) / U256::from(10);
-                warn!("Retrying transaction with higher gas price: {:?}, in 30s", gas_price);
-                sleep(Duration::from_secs(30)).await;
-            } else {
-                anyhow::bail!("Sending transaction timed out and max retries reached.");
-            }
+        // the above code should early return if there was a successful tx or an irrecoverable failure.
+        // so, if we have reached this point, that means we need to retry
+        if retries < max_retries {
+            retries += 1;
+            // hardcode increase by 20% TODO: remove hardcode
+            gas_price = gas_price * U256::from(12) / U256::from(10);
+            warn!("Retrying transaction with higher gas price: {:?}, in 30s", gas_price);
+            sleep(Duration::from_secs(30)).await;
+        } else {
+            anyhow::bail!("Sending transaction timed out and max retries reached.");
         }
     }
 }
