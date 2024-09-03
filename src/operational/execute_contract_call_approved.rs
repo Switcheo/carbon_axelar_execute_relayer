@@ -50,7 +50,7 @@ pub async fn execute_contract_call_approved(evm_chains: &Vec<Chain>, chain_id: S
         base64_to_hex(&payload)
     };
 
-    // Iterate through the logs to find your specific event
+    // Iterate through the logs to find the specific event
     for log in receipt.logs {
         // Decode the log
         if let Ok(decoded_log) = ContractCallApprovedEvent::decode_log(&RawLog {

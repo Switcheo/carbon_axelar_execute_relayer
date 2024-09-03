@@ -9,7 +9,7 @@ use sqlx::PgPool;
 use tracing::{error, info, instrument, warn};
 
 use crate::conf::{AppConfig, Chain};
-use crate::constants::events::{CARBON_AXELAR_CALL_CONTRACT_EVENT, CARBON_BRIDGE_PENDING_ACTION_EVENT};
+use crate::constants::events::{CARBON_AXELAR_CALL_CONTRACT_EVENT, CARBON_BRIDGE_PENDING_ACTION_EVENT, CARBON_UPDATE_PENDING_ACTION_EVENT};
 use crate::db::carbon_events::{get_chain_id_for_nonce, get_pending_action_by_nonce, save_axelar_call_contract_event, save_bridge_pending_action_event};
 use crate::db::DbAxelarCallContractEvent;
 use crate::db::evm_events::save_call_contract_approved_event;
@@ -53,17 +53,23 @@ pub async fn sync_block_range(conf: AppConfig, pg_pool: Arc<PgPool>, start_heigh
     for event in extract_events(response, CARBON_BRIDGE_PENDING_ACTION_EVENT) {
         let bridge_pending_action_event = parse_bridge_pending_action_event(event.clone());
 
-        // check if relay has expired
-        let relay_details = bridge_pending_action_event.get_relay_details();
-        if bridge_pending_action_event.get_relay_details().has_expired() {
-            info!("Skipping event with nonce {:?} as it has expired by {:?}", bridge_pending_action_event.nonce.to_u64(), relay_details.get_expiry_duration());
-            continue
+
+        if is_broadcasted_by_relayer(&conf, bridge_pending_action_event.nonce).await {
+            info!("saving pending action that was relayed by this relayer");
+        } else {
+            // check if relay has expired
+            let relay_details = bridge_pending_action_event.get_relay_details();
+            if !relay_details.is_sent() && relay_details.has_expired() {
+                info!("Skipping event with nonce {:?} as it has expired by {:?}", bridge_pending_action_event.nonce.to_u64(), relay_details.get_expiry_duration());
+                continue
+            }
         }
+
 
         save_bridge_pending_action_event(pg_pool.clone(), &bridge_pending_action_event).await;
     }
 
-    let mut saved_call_contract_events: Vec<DbAxelarCallContractEvent> = Vec::new();
+    let mut call_contract_events: Vec<DbAxelarCallContractEvent> = Vec::new();
     // Find and save CARBON_AXELAR_CALL_CONTRACT_EVENT event
     let query = format!("{}.nonce EXISTS AND tx.height>={} AND tx.height<={}", CARBON_AXELAR_CALL_CONTRACT_EVENT, start_height, end_height);
     let response = abci_query(&conf.carbon.rpc_url, &query).await?;
@@ -71,15 +77,24 @@ pub async fn sync_block_range(conf: AppConfig, pg_pool: Arc<PgPool>, start_heigh
     // extract all events and save events
     for event in extract_events(response, CARBON_AXELAR_CALL_CONTRACT_EVENT) {
         let axelar_call_contract_event = parse_axelar_call_contract_event(event);
+        call_contract_events.push(axelar_call_contract_event.clone());
         if !should_save_call_contract_event(pg_pool.clone(), &axelar_call_contract_event).await {
+            info!("Not saving call_contract event");
             continue
         }
         save_axelar_call_contract_event(pg_pool.clone(), &axelar_call_contract_event.clone()).await;
-        saved_call_contract_events.push(axelar_call_contract_event.clone())
     }
 
     // Find and save EVM event for each new payload_hash found
-    for event in saved_call_contract_events {
+    for event in call_contract_events {
+        // check if event was broadcasted by relayer
+
+        if !is_broadcasted_by_relayer(&conf, event.nonce).await {
+            info!("there's a pending action that was relayed but not by this relayer, so skip saving AxelarCallContract");
+            continue
+        }
+
+
         let chain_id_result = get_chain_id_for_nonce(pg_pool.clone(), event.nonce).await;
         let chain_id = match chain_id_result {
             Ok(chain_id) => {
@@ -107,6 +122,19 @@ pub async fn sync_block_range(conf: AppConfig, pg_pool: Arc<PgPool>, start_heigh
     }
 
     Ok(())
+}
+
+// this is not a foolproof check, because the events return with extra quotations "" we can't properly query stuff nonce ""38"" and nonce ""138"" will be captured in the same query of 38
+async fn is_broadcasted_by_relayer(conf: &AppConfig, nonce: i64) -> bool {
+    let query = format!("{}.nonce CONTAINS '{}' AND {}.relay_details CONTAINS '{}'",
+                        CARBON_UPDATE_PENDING_ACTION_EVENT, nonce, CARBON_UPDATE_PENDING_ACTION_EVENT, conf.carbon.relayer_address);
+
+    let response = abci_query(&conf.carbon.rpc_url, &query).await.context("failed querying").unwrap();
+    info!("Found {} transactions with {}", response.result.total_count, CARBON_UPDATE_PENDING_ACTION_EVENT);
+    if response.result.total_count == "0" {
+        return false
+    }
+    return true
 }
 
 async fn should_save_call_contract_event(pg_pool: Arc<PgPool>, axelar_call_contract_event: &DbAxelarCallContractEvent) -> bool {

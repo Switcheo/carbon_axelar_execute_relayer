@@ -80,7 +80,7 @@ cargo run -- -vv run
 cargo run -- -vvvv run
 
 # run with a different config file
-cargo run -- -vv run --config your_config.toml
+cargo run -- --config your_config.toml -vv run
 ```
 
 #### Compile binary

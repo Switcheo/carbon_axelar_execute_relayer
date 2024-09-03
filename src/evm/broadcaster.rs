@@ -10,12 +10,12 @@ use ethers::utils::hex::decode;
 use sqlx::PgPool;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::time::{Duration, interval};
-use tracing::{debug, error, info, instrument};
+use tokio::time::{Duration, interval, sleep, timeout};
+use tracing::{debug, error, info, instrument, warn};
 
 use crate::conf::Chain;
 use crate::db::DbContractCallApprovedEvent;
-use crate::db::evm_events::update_executed;
+use crate::db::evm_events::{update_broadcast_status};
 
 abigen!(
     IAxelarExecutable,
@@ -73,8 +73,8 @@ async fn queue_new_events_for_broadcast(pool: &PgPool, channel_tx_map: HashMap<S
         info!("DB event found: {:?}", event);
         match channel_tx_map.get(&event.blockchain) {
             Some(sender) => {
-                if let Err(e) = sender.send(event.clone()).await {
-                    error!("Failed to send to channel {:?}, err: {:?}", &event.blockchain, e);
+                if let Err(e) = sender.clone().send(event.clone()).await {
+                    error!("Failed to send to channel {:?}, err: {}", &event.blockchain, e);
                 }
             }
             None => {
@@ -107,7 +107,9 @@ async fn init_channels(evm_chains: Vec<Chain>, pg_pool: Arc<PgPool>) -> HashMap<
 }
 
 
-#[instrument(name = "broadcaster_evm::receive_and_broadcast", skip_all, fields(chain = chain.chain_id))]
+#[instrument(name = "broadcaster_evm::receive_and_broadcast", skip_all, fields(
+    chain = chain.chain_id
+))]
 pub async fn receive_and_broadcast(chain: Chain, mut rx: Receiver<DbContractCallApprovedEvent>, pg_pool: Arc<PgPool>) -> Result<()> {
     let provider = init_provider(chain.clone()).await?;
     let axelar_gateway = chain.axelar_gateway_proxy.parse::<Address>()?;
@@ -133,7 +135,7 @@ pub async fn receive_and_broadcast(chain: Chain, mut rx: Receiver<DbContractCall
             // If already executed, mark db event as executed
             info!("Skipping event as blockchain query for is_contract_call_approved is !approved. This can mean it is already executed, payload_hash: {:?}", &event.payload_hash);
             // update executed
-            update_executed(pg_pool.clone(), &event).await?;
+            update_broadcast_status(pg_pool.clone(), &event, "executed").await?;
             continue;
         }
 
@@ -151,22 +153,28 @@ pub async fn receive_and_broadcast(chain: Chain, mut rx: Receiver<DbContractCall
         }
 
         // Update to broadcasting
-        if let Err(e) = sqlx::query!(
-                            "UPDATE contract_call_approved_events SET broadcast_status = $1 WHERE id = $2",
-                            "broadcasting",
-                            event.id.clone()
-                        )
-            .execute(pg_pool.as_ref())
-            .await {
-            error!("UPDATE failed with error: {:?}", e);
-            continue;
+        update_broadcast_status(pg_pool.clone(), &event, "broadcasting").await?;
+
+        // Attempt to broadcast the transaction
+        match broadcast_tx(chain.clone(), event.clone(), provider.clone()).await {
+            Ok(_) => {
+                info!("broadcast success");
+                // If broadcast_tx succeeds, update the execution status
+                if let Err(e) = update_broadcast_status(pg_pool.clone(), &event, "executed").await {
+                    // Handle the error from update_executed if necessary
+                    error!("Failed to update executed status: {:?}", e);
+                }
+            }
+            Err(e) => {
+                // Handle the error from broadcast_tx
+                error!("Failed to broadcast transaction: {:?}", e);
+                // If broadcast_tx fails, update the execution status
+                if let Err(e) = update_broadcast_status(pg_pool.clone(), &event, "failed").await {
+                    // Handle the error from update_executed if necessary
+                    error!("Failed to update executed status: {:?}", e);
+                }
+            }
         }
-
-        // broadcast
-        broadcast_tx(chain.clone(), event.clone(), provider.clone()).await?;
-
-        // if no errors, we can update
-        update_executed(pg_pool.clone(), &event).await?;
     })
 }
 
@@ -193,28 +201,82 @@ pub async fn broadcast_tx(chain: Chain, event: DbContractCallApprovedEvent, prov
 
     let payload_bytes = decode(&event.payload)?;
 
-    // Send the transaction
-    let receipt: TransactionReceipt = executable
-        .execute(
-            command_id_h256.0,
-            event.source_chain,
-            event.source_address,
-            Bytes::from(payload_bytes),
-        )
-        .send()
-        .await
-        .context("Failed to send transaction")?
-        .await
-        .context("Failed to await transaction receipt")?
-        .ok_or_else(|| anyhow::anyhow!("Transaction receipt not found, the transaction might not have been mined yet"))?;
 
-    // Check the transaction status
-    if receipt.status == Some(U64::from(1)) {
-        info!("Transaction for payload_hash {} successfully executed. tx_hash: {:?}", &event.payload_hash, &receipt.transaction_hash);
-        debug!("Transaction receipt: {receipt:?}");
-    } else {
-        anyhow::bail!("Transaction failed with receipt: {receipt:?}");
+    // get nonce
+    let nonce = provider.get_transaction_count(provider.address(), None).await?;
+
+    // get current gas price
+    let mut gas_price = provider.get_gas_price().await?;
+    gas_price = gas_price;
+    // hardcode max retries TODO: remove hardcode
+    let max_retries = 5;
+    let mut retries = 0;
+
+    loop {
+        // Send the transaction with the current gas price
+        let tx = executable
+            .execute(
+                command_id_h256.0,
+                event.source_chain.clone(),
+                event.source_address.clone(),
+                Bytes::from(payload_bytes.clone()),
+            )
+            .gas_price(gas_price.clone())
+            .nonce(nonce.clone());
+
+        info!("Sending execute tx for command id {}, payload_hash: {}, with evm gas price: {}, evm nonce: {}", event.command_id.clone(), event.payload_hash.clone(), gas_price.clone(), nonce.clone());
+
+        let send_timeout = Duration::from_secs(60);
+        match timeout(send_timeout, tx.send()).await {
+            Ok(Ok(pending_tx)) => match timeout(send_timeout, pending_tx).await {
+                Ok(Ok(Some(receipt))) => {
+                    if receipt.status == Some(U64::from(1)) {
+                        info!(
+                        "Transaction for payload_hash {} successfully executed. tx_hash: {:?}",
+                        &event.payload_hash,
+                        &receipt.transaction_hash
+                    );
+                        debug!("Transaction receipt: {receipt:?}");
+                        return Ok(());
+                    } else {
+                        error!("Transaction failed with receipt: {receipt:?}");
+                        anyhow::bail!("Transaction failed with receipt: {receipt:?}");
+                    }
+                }
+                Ok(Ok(None)) => {
+                    warn!("Transaction receipt not found. Retrying with higher gas price.");
+                }
+                Ok(Err(e)) => {
+                    error!("Failed to await transaction receipt.");
+                    return Err(e).context("Failed to await transaction receipt");
+                }
+                Err(_) => {
+                    error!("Awaiting transaction receipt timed out.");
+                }
+            },
+            Ok(Err(e)) => {
+                if e.to_string().contains("already known") {
+                    warn!("Transaction already known. Retrying with higher gas price.");
+                } else {
+                    error!("Failed to send transaction.");
+                    return Err(e).context("Failed to send transaction");
+                }
+            }
+            Err(_) => {
+                error!("Sending transaction timed out.");
+            }
+        };
+
+        // the above code should early return if there was a successful tx or an irrecoverable failure.
+        // so, if we have reached this point, that means we need to retry
+        if retries < max_retries {
+            retries += 1;
+            // hardcode increase by 20% TODO: remove hardcode
+            gas_price = gas_price * U256::from(12) / U256::from(10);
+            warn!("Retrying transaction with higher gas price: {:?}, in 30s", gas_price);
+            sleep(Duration::from_secs(30)).await;
+        } else {
+            anyhow::bail!("Sending transaction timed out and max retries reached.");
+        }
     }
-
-    Ok(())
 }
