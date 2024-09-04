@@ -164,7 +164,7 @@ async fn is_expired_or_sent(carbon_config: &Carbon, nonce: i64) -> bool {
 // Checks the DB for events that can be expired and enqueues them into the broadcast channel
 async fn expire_pending_actions(carbon_config: &Carbon, pool: Arc<PgPool>, carbon_broadcaster: Sender<BroadcastRequest>) -> Result<()> {
     // Check for new events
-    info!("Checking for expired pending_action_events in the DB...");
+    debug!("Checking for expired pending_action_events in the DB...");
     let expired_events = get_expired_pending_action_events(pool.clone()).await?;
     let expired_nonces: Vec<i64> = expired_events
         .into_iter()
@@ -173,7 +173,7 @@ async fn expire_pending_actions(carbon_config: &Carbon, pool: Arc<PgPool>, carbo
 
     // Early return if empty
     if expired_nonces.is_empty() {
-        info!("No expired pending_action_events found in the DB");
+        debug!("No expired pending_action_events found in the DB");
         return Ok(());
     }
 
