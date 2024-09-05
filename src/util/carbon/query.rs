@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use reqwest::Client;
 use serde_json::{from_value, Value};
-use tracing::info;
+use tracing::{debug, info};
 use crate::db::{RelayDetails};
 
 pub async fn get_pending_action_nonces(rest_url: &str) -> Result<Vec<i64>> {
@@ -17,7 +17,7 @@ pub async fn get_pending_action_nonces(rest_url: &str) -> Result<Vec<i64>> {
         .map(|nonce| nonce.as_str().ok_or(anyhow!("nonce is not a string"))?.parse::<i64>().map_err(|e| anyhow!("Failed to parse nonce: {:?}", e)))
         .collect::<Result<Vec<i64>>>()?;
 
-    info!("found pending action nonces {:?}", nonces);
+    debug!("found pending action nonces {:?}", nonces);
     Ok(nonces)
 }
 
