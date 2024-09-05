@@ -20,7 +20,7 @@ pub async fn init_all(evm_chains: Vec<Chain>, pg_pool: Arc<PgPool>) {
     for chain in evm_chains {
         let pg_pool_clone = pg_pool.clone();
         let chain_clone = chain.clone();
-        info!("Subscribing to {} on {}", &chain.chain_id, &chain.ws_url);
+        info!("Subscribing to {}, hasWS: {}", &chain.chain_id, &chain.has_ws);
         tokio::spawn(async move {
             if chain.has_ws {
                 if let Err(e) = init_ws(chain_clone, pg_pool_clone).await {

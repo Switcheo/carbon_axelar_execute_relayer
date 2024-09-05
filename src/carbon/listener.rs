@@ -10,8 +10,8 @@ use url::Url;
 use crate::carbon::broadcaster::BroadcastRequest;
 use crate::carbon::retry::{is_whitelisted_or_sufficient_fees, queue_start_relay};
 use crate::conf::{Carbon, Fee};
-use crate::constants::events::{CARBON_AXELAR_CALL_CONTRACT_EVENT, CARBON_BRIDGE_EXPIRED_PENDING_ACTION_EVENT, CARBON_BRIDGE_PENDING_ACTION_EVENT, CARBON_BRIDGE_REVERT_EVENT};
-use crate::db::carbon_events::{delete_bridge_pending_action_event, save_axelar_call_contract_event, save_bridge_pending_action_event};
+use crate::constants::events::{CARBON_AXELAR_CALL_CONTRACT_EVENT, CARBON_BRIDGE_EXPIRED_PENDING_ACTION_EVENT, CARBON_BRIDGE_PENDING_ACTION_EVENT, CARBON_BRIDGE_REVERT_EVENT, CARBON_UPDATE_PENDING_ACTION_EVENT};
+use crate::db::carbon_events::{delete_bridge_pending_action_event, save_axelar_call_contract_event, save_bridge_pending_action_event, update_bridge_pending_action_event};
 use crate::util::carbon::parser::{parse_axelar_call_contract_event, parse_bridge_pending_action_event, parse_bridge_reverted_event, parse_expired_pending_action_event};
 use crate::util::cosmos::extract_events;
 use crate::ws::JSONWebSocketClient;
@@ -26,16 +26,17 @@ pub async fn init_ws(carbon_config: &Carbon, fee_config: &Fee, pg_pool: Arc<PgPo
 
     // add WithdrawTokenConfirmedEvent subscription
     let pool = pg_pool.clone();
-    let carbon_config = carbon_config.clone();
+    let c_config = carbon_config.clone();
     let fee_config = fee_config.clone();
     let carbon_broadcaster = carbon_broadcaster.clone();
+    // add CARBON_BRIDGE_PENDING_ACTION_EVENT subscription
     client.add_cosmos_subscription(
         "1".to_string(),
-        &format!("{}.connection_id CONTAINS '{}/'", CARBON_BRIDGE_PENDING_ACTION_EVENT, &carbon_config.axelar_bridge_id),
+        &format!("{}.connection_id CONTAINS '{}/'", CARBON_BRIDGE_PENDING_ACTION_EVENT, c_config.clone().axelar_bridge_id),
         Arc::new(Mutex::new(move |msg: String| {
             // Spawn an async task to handle the message
             let pool = pool.clone();
-            let carbon_config = carbon_config.clone();
+            let carbon_config = c_config.clone();
             let fee_config = fee_config.clone();
             let carbon_broadcaster = carbon_broadcaster.clone();
             tokio::spawn(async move {
@@ -43,10 +44,24 @@ pub async fn init_ws(carbon_config: &Carbon, fee_config: &Fee, pg_pool: Arc<PgPo
             });
         })));
 
-    // add CARBON_BRIDGE_EXPIRED_PENDING_ACTION_EVENT subscription
+    // add CARBON_BRIDGE_PENDING_ACTION_EVENT subscription
+    let c_config = carbon_config.clone();
     let pool = pg_pool.clone();
     client.add_cosmos_subscription(
         "2".to_string(),
+        &format!("{}.connection_id CONTAINS '{}/'", CARBON_UPDATE_PENDING_ACTION_EVENT, c_config.clone().axelar_bridge_id),
+        Arc::new(Mutex::new(move |msg: String| {
+            // Spawn an async task to handle the message
+            let pool = pool.clone();
+            tokio::spawn(async move {
+                process_bridge_update_pending_action(msg, pool.clone()).await;
+            });
+        })));
+
+    // add CARBON_BRIDGE_EXPIRED_PENDING_ACTION_EVENT subscription
+    let pool = pg_pool.clone();
+    client.add_cosmos_subscription(
+        "3".to_string(),
         &format!("{} EXISTS", CARBON_BRIDGE_EXPIRED_PENDING_ACTION_EVENT),
         Arc::new(Mutex::new(move |msg: String| {
             let pool = pool.clone();
@@ -59,7 +74,7 @@ pub async fn init_ws(carbon_config: &Carbon, fee_config: &Fee, pg_pool: Arc<PgPo
     // add BridgeRevertEvent subscription
     let pool = pg_pool.clone();
     client.add_cosmos_subscription(
-        "3".to_string(),
+        "4".to_string(),
         &format!("{} EXISTS", CARBON_BRIDGE_REVERT_EVENT),
         Arc::new(Mutex::new(move |msg: String| {
             let pool = pool.clone();
@@ -72,7 +87,7 @@ pub async fn init_ws(carbon_config: &Carbon, fee_config: &Fee, pg_pool: Arc<PgPo
     // add AxelarCallContractEvent subscription
     let pool = pg_pool.clone();
     client.add_cosmos_subscription(
-        "4".to_string(),
+        "5".to_string(),
         &format!("{} EXISTS", CARBON_AXELAR_CALL_CONTRACT_EVENT),
         Arc::new(Mutex::new(move |msg: String| {
             let pool = pool.clone();
@@ -117,6 +132,19 @@ async fn process_bridge_pending_action(carbon_config: &Carbon, fee_config: &Fee,
                 queue_start_relay(&carbon_config.clone(), pg_pool.clone(), carbon_broadcaster.clone(), pending_action.nonce).await;
             });
         }
+    }
+}
+
+// process_bridge_update_pending_action processes the UpdatePendingActionEvent
+#[instrument(skip_all)]
+async fn process_bridge_update_pending_action(msg: String, pg_pool: Arc<PgPool>) {
+    info!("Processing new PendingActionEvent from Carbon");
+    let events = extract_events(&msg, CARBON_UPDATE_PENDING_ACTION_EVENT).unwrap();
+    for event in events {
+        let pending_action = parse_bridge_pending_action_event(event);
+
+        // update in DB
+        update_bridge_pending_action_event(pg_pool.clone(), &pending_action.clone()).await;
     }
 }
 

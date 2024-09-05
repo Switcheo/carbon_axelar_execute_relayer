@@ -60,6 +60,21 @@ pub async fn save_bridge_pending_action_event(pg_pool: Arc<PgPool>, event: &DbPe
     }
 }
 
+pub async fn update_bridge_pending_action_event(pg_pool: Arc<PgPool>, event: &DbPendingActionEvent) {
+    let result = sqlx::query!(
+                        "UPDATE pending_action_events SET relay_details=$1 where nonce=$2",
+                        event.get_relay_details_value(),
+                        event.nonce,
+                    )
+        .execute(&*pg_pool)
+        .await;
+
+    match result {
+        Ok(_res) => info!("Updated bridge_pending_action_event with nonce {:?}", event.nonce),
+        Err(e) => error!("Failed to update event data: {}", e)
+    }
+}
+
 pub async fn delete_bridge_pending_action_event(pg_pool: Arc<PgPool>, nonce: i64) {
     let result = sqlx::query!(
                         "DELETE FROM pending_action_events where nonce = $1",
