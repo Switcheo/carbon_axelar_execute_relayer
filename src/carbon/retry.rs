@@ -47,7 +47,7 @@ async fn retry_pending_actions(carbon_config: &Carbon, fee_config: &Fee, pool: A
     debug!("Checking for pending_action_events to broadcast...");
     let events: Vec<DbPendingActionEvent> = sqlx::query_as!(
         DbPendingActionEvent,
-        "SELECT * FROM pending_action_events WHERE retry_count < $1 AND (relay_details ->> 'expiry_block_time')::timestamp > NOW()",
+        "SELECT * FROM pending_action_events WHERE retry_count < $1 AND (relay_details ->> 'expiry_block_time')::timestamp > NOW() AND ((relay_details ->> 'sent_at') IS NULL OR (relay_details ->> 'sent_at') = '')",
         carbon_config.maximum_start_relay_retry_count
     )
         .fetch_all(&*pool)
