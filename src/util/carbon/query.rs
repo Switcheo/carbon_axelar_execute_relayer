@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use reqwest::Client;
 use serde_json::{from_value, Value};
-use tracing::{debug, info};
+use tracing::{debug};
 use crate::db::{RelayDetails};
 
 pub async fn get_pending_action_nonces(rest_url: &str) -> Result<Vec<i64>> {
