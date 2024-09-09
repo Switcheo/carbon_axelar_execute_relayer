@@ -4,14 +4,13 @@ use anyhow::{Context, Error};
 use sqlx::PgPool;
 use sqlx::postgres::PgQueryResult;
 use sqlx::types::BigDecimal;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use crate::conf::Chain;
 use crate::db::carbon_events::get_axelar_call_contract_event;
 use crate::db::DbContractCallApprovedEvent;
 use crate::util::evm::ContractCallApprovedEvent;
 
 pub async fn save_call_contract_approved_event(chain_config: Chain, pg_pool: Arc<PgPool>, event: ContractCallApprovedEvent) {
-    info!("Received ContractCallApprovedEvent for carbon_axelar_gateway ({:?}): {:?}", &chain_config.carbon_axelar_gateway, event);
     let payload_hash = format!("{:?}", event.payload_hash);
 
     // get the corresponding carbon event
@@ -20,7 +19,7 @@ pub async fn save_call_contract_approved_event(chain_config: Chain, pg_pool: Arc
         Ok(event) => {
             match event {
                 Some(event) => {
-                    info!("Found matching event axelar_call_contract_event in DB with payload_hash: {:?}", &payload_hash);
+                    debug!("Found matching event axelar_call_contract_event in DB with payload_hash: {:?}", &payload_hash);
                     event
                 },
                 None => {
@@ -37,7 +36,7 @@ pub async fn save_call_contract_approved_event(chain_config: Chain, pg_pool: Arc
 
     // Save event to db
     match sqlx::query!(
-                    "INSERT INTO contract_call_approved_events (command_id, blockchain, broadcast_status, source_chain, source_address, contract_address, payload_hash, source_tx_hash, source_event_index, payload) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+                    "INSERT INTO contract_call_approved_events (command_id, blockchain, broadcast_status, source_chain, source_address, contract_address, payload_hash, source_tx_hash, source_event_index, payload) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT (payload_hash) DO NOTHING",
                     format!("{:?}", event.command_id),
                     chain_config.chain_id,
                     "pending_broadcast",
@@ -51,7 +50,11 @@ pub async fn save_call_contract_approved_event(chain_config: Chain, pg_pool: Arc
                 )
         .execute(&*pg_pool)
         .await {
-        Ok(_result) => info!("Inserted event successfully with payload_hash {}", &payload_hash),
+        Ok(result) => {
+            if result.rows_affected() > 0 {
+                info!("Inserted ContractCallApprovedEvent event successfully for carbon_axelar_gateway ({:?}) with payload_hash {}, event: {:?}", &chain_config.carbon_axelar_gateway, &payload_hash, event);
+            }
+        },
         Err(e) => error!("Unable to insert event, err {}:", e),
     };
 }
