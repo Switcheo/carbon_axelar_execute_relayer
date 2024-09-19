@@ -24,10 +24,11 @@ pub async fn check_hydrogen_strategy(fee_config: &Fee, relay_details: &RelayDeta
                     return false;
                 }
             };
+
             // drop the decimals by splitting at .
             let hydrogen_fee_value_without_decimals = hydrogen_fee_value.split_once('.')
                 .map(|(before_decimal, _)| before_decimal)
-                .unwrap();
+                .unwrap_or(&hydrogen_fee_value);
             let hydrogen_fee = U256::from_dec_str(hydrogen_fee_value_without_decimals).unwrap();
 
             // Get the relay's fee
