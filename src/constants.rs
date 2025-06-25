@@ -1,0 +1,8 @@
+pub mod events {
+    pub const CARBON_BRIDGE_PENDING_ACTION_EVENT: &str = "Switcheo.carbon.bridge.NewPendingActionEvent";
+    pub const CARBON_BRIDGE_EXPIRED_PENDING_ACTION_EVENT: &str = "Switcheo.carbon.bridge.ExpiredPendingActionEvent";
+    pub const CARBON_BRIDGE_REVERT_EVENT: &str = "Switcheo.carbon.bridge.BridgeRevertedEvent";
+    pub const CARBON_UPDATE_PENDING_ACTION_EVENT: &str = "Switcheo.carbon.bridge.UpdatePendingActionEvent";
+    pub const CARBON_AXELAR_CALL_CONTRACT_EVENT: &str = "Switcheo.carbon.bridge.ModuleAxelarCallContractEvent";
+    pub const EVM_CONTRACT_CALL_APPROVED_EVENT: &str = "ContractCallApproved";
+}

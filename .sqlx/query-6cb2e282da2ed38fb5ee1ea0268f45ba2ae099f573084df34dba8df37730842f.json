@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE pending_action_events SET retry_count = retry_count + 1 WHERE nonce = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6cb2e282da2ed38fb5ee1ea0268f45ba2ae099f573084df34dba8df37730842f"
+}

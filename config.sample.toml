@@ -1,0 +1,56 @@
+[database]
+# main postgres db to store transactions for processing
+pg_url = "postgresql://localhost:5432/carbon_axelar_execute_relayer"
+
+[carbon]
+# the chain id of carbon chain e.g. carbon-1
+chain_id = "carbon-localhost"
+# account prefix
+account_prefix = "tswth"
+# bridge id constant specified on carbon
+axelar_bridge_id = "3"
+# carbon's TM RPC URL
+rpc_url = "http://localhost:26657"
+# carbon's LIGHT CLIENT REST URL
+rest_url = "http://localhost:1317"
+# carbon's WS URL
+ws_url = "ws://localhost:26657/websocket"
+# relayer deposit address on carbon we should watch for
+relayer_address = "tswth1734770tk39nrhfl5y8uyhfpu45n2a7r9ua22a2"
+# mnemonic key of relayer address on carbon to receive fees and start relays
+relayer_mnemonic = "<mnemonic>"
+# maximum number of retries the relayer should attempt before it stops trying
+maximum_start_relay_retry_count = 12
+
+[fee]
+# the strategy the relayer will use to determine if the fees are enough for relay
+# allowed values = hydrogen, all, greater_than0
+relay_strategy = "hydrogen"
+# convenience hydrogen url to check the various fees
+hydrogen_url = "http://localhost:8080"
+# allow up to x% less from latest fees
+fee_tolerance_percentage = 5.0
+# whitelist a list of addresses don't need to pay relay fees but will still get their action relayed
+whitelist_addresses = [
+    "tswth1734770tk39nrhfl5y8uyhfpu45n2a7r9ua22a2"
+]
+
+[[evm_chain]]
+# whether to use ws for streaming events, only if the node supports ws
+has_ws = false
+# chain id should be the same as what is found on carbon's connection
+chain_id = "bsc-testnet"
+# RPC url for broadcasting and resyncing events on EVM
+rpc_url = "https://bsc-testnet.publicnode.com"
+# WS url for listening to events on EVM
+ws_url = ""
+# Axelar's main gateway proxy
+axelar_gateway_proxy = "0x169ee9364B412B986d09e628eb74e60B2C092729"
+# Carbon's SC gateway
+carbon_axelar_gateway = "0xCBCBE6c390657f4E40151B6301066fe4FCdd14Ac"
+# max_query_blocks is for resyncing missed events, as some chains has a limit on how much you can query at once
+max_query_blocks = 10000
+# private key to the evm relayer addresss
+relayer_private_key = ""
+# the maximum gas that should be allocated to each evm tx
+gas_limit = 400000

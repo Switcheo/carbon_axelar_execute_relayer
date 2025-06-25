@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT * FROM pending_action_events WHERE retry_count < $1 AND (relay_details ->> 'expiry_block_time')::timestamp > NOW() AND ((relay_details ->> 'sent_at') IS NULL OR (relay_details ->> 'sent_at') = '')",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "connection_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "bridge_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "chain_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "nonce",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 5,
+        "name": "pending_action_type",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 6,
+        "name": "retry_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 7,
+        "name": "relay_details",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "a6e7093e474683c87a677e4c50737da1a6477b9a551bab29fd43b09bc266c2ff"
+}

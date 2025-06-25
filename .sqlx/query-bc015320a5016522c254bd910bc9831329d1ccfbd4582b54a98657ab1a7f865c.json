@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO contract_call_approved_events (command_id, blockchain, broadcast_status, source_chain, source_address, contract_address, payload_hash, source_tx_hash, source_event_index, payload) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT (payload_hash) DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Numeric",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "bc015320a5016522c254bd910bc9831329d1ccfbd4582b54a98657ab1a7f865c"
+}

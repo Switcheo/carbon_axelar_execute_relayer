@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE pending_action_events SET relay_details=$1 where nonce=$2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Jsonb",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7c8295c96b8332561e3130f700517472867a462967f37d537767358838958498"
+}

@@ -1,0 +1,82 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT * FROM contract_call_approved_events WHERE broadcast_status = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "blockchain",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "broadcast_status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "command_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "source_chain",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "source_address",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "contract_address",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "payload_hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "source_tx_hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "source_event_index",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 10,
+        "name": "payload",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "4769971a62be2a3ed538f4821335a72aaf81e33d4d063493d4fe309cf1a87358"
+}

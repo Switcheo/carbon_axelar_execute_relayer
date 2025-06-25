@@ -1,0 +1,494 @@
+syntax = "proto3";
+package Switcheo.carbon.bridge;
+
+import "cosmos/base/v1beta1/coin.proto";
+import "cosmos/msg/v1/msg.proto";
+import "cosmos_proto/cosmos.proto";
+import "google/protobuf/wrappers.proto";
+import "google/protobuf/duration.proto";
+import "gogoproto/gogo.proto";
+import "amino/amino.proto";
+
+import "Switcheo/carbon/bridge/params.proto";
+import "Switcheo/carbon/bridge/bridge.proto";
+
+option go_package = "github.com/Switcheo/carbon/x/bridge/types";
+option (gogoproto.goproto_getters_all) = false;
+
+// Msg defines the Msg service.
+service Msg {
+  option (cosmos.msg.v1.service) = true;
+  // this line is used by starport scaffolding # proto/tx/rpc
+
+  // ** bridge functions **
+  rpc SetBridgeEnabled(MsgSetBridgeEnabled)
+      returns (MsgSetBridgeEnabledResponse);
+  rpc UpdateAxelarIbcChannel(MsgUpdateAxelarIbcChannel)
+      returns (MsgUpdateAxelarIbcChannelResponse);
+  rpc UpdateIbcTimeoutHeightOffset(MsgUpdateIbcTimeoutHeightOffset)
+      returns (MsgUpdateIbcTimeoutHeightOffsetResponse);
+  rpc UpdateMaxRelayExpiry(MsgUpdateMaxRelayExpiry)
+      returns (MsgUpdateMaxRelayExpiryResponse);
+  rpc UpdateRelayWhitelistDuration(MsgUpdateRelayWhitelistDuration)
+      returns (MsgUpdateRelayWhitelistDurationResponse);
+  rpc UpdateParams(MsgUpdateParams) returns (MsgUpdateParamsResponse);
+
+  rpc CreateConnection(MsgCreateConnection)
+      returns (MsgCreateConnectionResponse);
+  rpc UpdateConnection(MsgUpdateConnection)
+      returns (MsgUpdateConnectionResponse);
+  rpc RemoveConnection(MsgRemoveConnection)
+      returns (MsgRemoveConnectionResponse);
+  rpc AddControllersForConnection(MsgAddControllersForConnection)
+      returns (MsgAddControllersForConnectionResponse);
+  rpc UpdateControllersForConnection(MsgUpdateControllersForConnection)
+      returns (MsgUpdateControllersForConnectionResponse);
+  rpc RemoveControllersForConnection(MsgRemoveControllersForConnection)
+      returns (MsgRemoveControllersForConnectionResponse);
+  rpc RemoveNonceMapForConnection(MsgRemoveNonceMapForConnection)
+      returns (MsgRemoveNonceMapForConnectionResponse);
+
+  rpc RegisterExternalToken(MsgRegisterExternalToken)
+      returns (MsgRegisterExternalTokenResponse);
+  rpc DeregisterExternalToken(MsgDeregisterExternalToken)
+      returns (MsgDeregisterExternalTokenResponse);
+  rpc DeployNativeToken(MsgDeployNativeToken)
+      returns (MsgDeployNativeTokenResponse);
+  rpc RegisterDeployedToken(MsgRegisterDeployedToken)
+      returns (MsgRegisterDeployedTokenResponse);
+  rpc WithdrawToken(MsgWithdrawToken) returns (MsgWithdrawTokenResponse);
+  rpc UpdateExternalToken(MsgUpdateExternalToken)
+      returns (MsgUpdateExternalTokenResponse);
+  rpc DeleteExternalToken(MsgDeleteExternalToken)
+      returns (MsgDeleteExternalTokenResponse);
+
+  rpc ExecuteFromCarbon(MsgExecuteFromCarbon)
+      returns (MsgExecuteFromCarbonResponse);
+
+  rpc StartRelay(MsgStartRelay) returns (MsgStartRelayResponse);
+  rpc PruneExpiredPendingActions(MsgPruneExpiredPendingActions)
+      returns (MsgPruneExpiredPendingActionsResponse);
+  rpc RevertPendingAction(MsgRevertPendingAction)
+      returns (MsgRevertPendingActionResponse);
+  rpc ConfirmPendingAction(MsgConfirmPendingAction)
+      returns (MsgConfirmPendingActionResponse);
+  rpc AddRelayer(MsgAddRelayer) returns (MsgAddRelayerResponse);
+  rpc RemoveRelayer(MsgRemoveRelayer) returns (MsgRemoveRelayerResponse);
+
+  // ** axelar convenience functions **
+  rpc AxelarSendToken(MsgAxelarSendToken) returns (MsgAxelarSendTokenResponse);
+  rpc AxelarCallContract(MsgAxelarCallContract)
+      returns (MsgAxelarCallContractResponse);
+  rpc AxelarCallContractWithToken(MsgAxelarCallContractWithToken)
+      returns (MsgAxelarCallContractWithTokenResponse);
+}
+
+message MsgSetBridgeEnabled {
+  option (cosmos.msg.v1.signer) = "creator";
+  option (amino.name) = "bridge/MsgSetBridgeEnabled";
+
+  string creator = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  uint64 bridge_id = 2;
+  bool is_enabled = 3;
+}
+
+message MsgSetBridgeEnabledResponse {}
+
+message MsgUpdateAxelarIbcChannel {
+  option (cosmos.msg.v1.signer) = "creator";
+  option (amino.name) = "bridge/MsgUpdateAxelarIbcChannel";
+
+  string creator = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  string channel_id = 2;
+}
+
+message MsgUpdateAxelarIbcChannelResponse {}
+
+message MsgUpdateIbcTimeoutHeightOffset {
+  option (cosmos.msg.v1.signer) = "creator";
+  option (amino.name) = "bridge/MsgUpdateIbcTimeoutHeightOffset";
+
+  string creator = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  uint64 offset = 2;
+}
+
+message MsgUpdateIbcTimeoutHeightOffsetResponse {}
+
+message MsgUpdateMaxRelayExpiry {
+  option (cosmos.msg.v1.signer) = "creator";
+  option (amino.name) = "bridge/UpdateRelayExpiry";
+
+  string creator = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  google.protobuf.Duration expiry = 2
+      [ (gogoproto.stdduration) = true, (gogoproto.nullable) = false ];
+}
+
+message MsgUpdateMaxRelayExpiryResponse {}
+
+message MsgUpdateRelayWhitelistDuration {
+  option (cosmos.msg.v1.signer) = "creator";
+  option (amino.name) = "bridge/UpdateRelayWhitelistDuration";
+
+  string creator = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  google.protobuf.Duration whitelist_duration = 2
+      [ (gogoproto.stdduration) = true, (gogoproto.nullable) = false ];
+}
+
+message MsgUpdateRelayWhitelistDurationResponse {}
+
+message MsgUpdateParams {
+  option (cosmos.msg.v1.signer) = "authority";
+  option (amino.name) = "bridge/MsgUpdateParams";
+
+  string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  Params params = 2 [ (gogoproto.nullable) = false ];
+}
+
+message MsgUpdateParamsResponse {}
+
+// MsgAxelarSendToken is a convenience method to send a *Axelar Supported* token
+// via axelar.
+message MsgAxelarSendToken {
+  option (cosmos.msg.v1.signer) = "creator";
+  option (amino.name) = "bridge/MsgAxelarSendToken";
+
+  // for this message, the message creator will be the sender of the token
+  string creator = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  // the destination chain. see axelar for list of supported chain names:
+  // https://docs.axelar.dev/dev/reference/mainnet-chain-names
+  string destination_chain = 2;
+  // the address on destination chain
+  string destination_address = 3;
+  // see supported tokens: https://docs.axelar.dev/resources/mainnet#assets,
+  // convert them to ibc equivalent on carbon
+  cosmos.base.v1beta1.Coin tokens = 4 [
+    (gogoproto.customtype) = "github.com/cosmos/cosmos-sdk/types.Coin",
+    (gogoproto.nullable) = false
+  ];
+}
+
+message MsgAxelarSendTokenResponse {}
+
+// MsgAxelarCallContract is a convenience method to do a GMP call to axelar.
+// This method will allow you do a `callContract` without having to specify the
+// following: TypeGeneralMessageWithToken, IBC channel, IBC port, AxelarGMPAcc
+message MsgAxelarCallContract {
+  option (cosmos.msg.v1.signer) = "creator";
+  option (amino.name) = "bridge/MsgAxelarCallContract";
+
+  // for this message, the message creator will be the sender
+  string creator = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  // the destination chain. see axelar for list of supported chain names:
+  // https://docs.axelar.dev/dev/reference/mainnet-chain-names
+  string destination_chain = 2;
+  // the address on destination chain
+  string destination_address = 3;
+  // abi encoded bytes
+  bytes payload = 4;
+}
+
+message MsgAxelarCallContractResponse {}
+
+// MsgAxelarCallContractWithToken is a convenience method to do a GMP call to
+// axelar and attach some *Axelar Supported* tokens This method will allow you
+// do a `callContractWithToken` without having to specify the following:
+// TypeGeneralMessageWithToken, IBC channel, IBC port, AxelarGMPAcc
+message MsgAxelarCallContractWithToken {
+  option (cosmos.msg.v1.signer) = "creator";
+  option (amino.name) = "bridge/MsgAxelarCallContractWithToken";
+
+  // for this message, the message creator will be the sender
+  string creator = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  // the destination chain. see axelar for list of supported chain names:
+  // https://docs.axelar.dev/dev/reference/mainnet-chain-names
+  string destination_chain = 2;
+  // the address on destination chain
+  string destination_address = 3;
+  // see supported tokens: https://docs.axelar.dev/resources/mainnet#assets,
+  // convert them to ibc equivalent on carbon
+  cosmos.base.v1beta1.Coin tokens = 4 [
+    (gogoproto.customtype) = "github.com/cosmos/cosmos-sdk/types.Coin",
+    (gogoproto.nullable) = false
+  ];
+  // abi encoded bytes
+  bytes payload = 5;
+}
+
+message MsgAxelarCallContractWithTokenResponse {}
+
+message MsgCreateConnection {
+  option (cosmos.msg.v1.signer) = "creator";
+  option (amino.name) = "bridge/MsgCreateConnection";
+
+  string creator = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  uint64 bridge_id = 2;
+  string chain_id = 3;
+  string chain_display_name = 4;
+  string token_gateway_address = 5;
+  string encoding = 6;
+  bool is_enabled = 7;
+}
+
+message MsgCreateConnectionResponse {}
+
+message MsgUpdateConnection {
+  option (cosmos.msg.v1.signer) = "creator";
+  option (amino.name) = "bridge/MsgUpdateConnection";
+
+  string creator = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  string connection_id = 2;
+  UpdateConnectionParams update_connection_params = 3
+      [ (gogoproto.nullable) = false ];
+}
+
+message UpdateConnectionParams {
+  option (amino.name) = "bridge/UpdateConnectionParams";
+
+  google.protobuf.StringValue chain_display_name = 1
+      [ (gogoproto.wktpointer) = true ];
+  google.protobuf.BoolValue is_enabled = 2 [ (gogoproto.wktpointer) = true ];
+}
+
+message MsgUpdateConnectionResponse {}
+
+message MsgRemoveConnection {
+  option (cosmos.msg.v1.signer) = "creator";
+  option (amino.name) = "bridge/MsgRemoveConnection";
+
+  string creator = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  string connection_id = 2;
+}
+
+message MsgRemoveConnectionResponse {}
+
+message MsgAddControllersForConnection {
+  option (cosmos.msg.v1.signer) = "creator";
+  option (amino.name) = "bridge/MsgAddControllersForConnection";
+
+  string creator = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  ControllerContracts controllers = 2 [ (gogoproto.nullable) = false ];
+}
+
+message MsgAddControllersForConnectionResponse {}
+
+message MsgUpdateControllersForConnection {
+  option (cosmos.msg.v1.signer) = "creator";
+  option (amino.name) = "bridge/MsgUpdateControllersForConnection";
+
+  string creator = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  string connection_id = 2;
+  ControllersToUpdate controllers = 3 [ (gogoproto.nullable) = false ];
+}
+
+message MsgUpdateControllersForConnectionResponse {}
+
+message MsgRemoveControllersForConnection {
+  option (cosmos.msg.v1.signer) = "creator";
+  option (amino.name) = "bridge/RemoveControllersForConnectionParams";
+
+  string creator = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  string connection_id = 2;
+}
+
+message MsgRemoveControllersForConnectionResponse {}
+
+message MsgRemoveNonceMapForConnection {
+  option (cosmos.msg.v1.signer) = "creator";
+  option (amino.name) = "bridge/RemoveNonceMapForConnection";
+
+  string creator = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  string connection_id = 2;
+  string gateway_address = 3;
+}
+
+message MsgRemoveNonceMapForConnectionResponse {}
+
+message MsgRegisterExternalToken {
+  option (cosmos.msg.v1.signer) = "creator";
+  option (amino.name) = "bridge/MsgRegisterExternalToken";
+
+  string creator = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  string connection_id = 2;
+  string asset_address = 3;
+  google.protobuf.Int64Value decimals = 4 [ (gogoproto.wktpointer) = true ];
+  string carbon_token_name = 5;
+  cosmos.base.v1beta1.Coin relay_fee = 6 [
+    (gogoproto.customtype) = "github.com/cosmos/cosmos-sdk/types.Coin",
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Duration expiry_duration = 7
+      [ (gogoproto.stdduration) = true, (gogoproto.nullable) = false ];
+}
+
+message MsgRegisterExternalTokenResponse {}
+
+message MsgDeregisterExternalToken {
+  option (cosmos.msg.v1.signer) = "creator";
+  option (amino.name) = "bridge/MsgDeregisterExternalToken";
+
+  string creator = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  string connection_id = 2;
+  string denom = 3;
+}
+
+message MsgDeregisterExternalTokenResponse {}
+
+message MsgDeployNativeToken {
+  option (cosmos.msg.v1.signer) = "creator";
+  option (amino.name) = "bridge/MsgDeployNativeToken";
+
+  string creator = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  string connection_id = 2;
+  string denom = 3;
+  cosmos.base.v1beta1.Coin relay_fee = 4 [
+    (gogoproto.customtype) = "github.com/cosmos/cosmos-sdk/types.Coin",
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Duration expiry_duration = 5
+      [ (gogoproto.stdduration) = true, (gogoproto.nullable) = false ];
+}
+
+message MsgDeployNativeTokenResponse {}
+
+message MsgRegisterDeployedToken {
+  option (cosmos.msg.v1.signer) = "creator";
+  option (amino.name) = "bridge/MsgRegisterDeployedToken";
+
+  string creator = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  string connection_id = 2;
+  string token_address = 3;
+  string denom = 4;
+}
+
+message MsgRegisterDeployedTokenResponse {}
+
+message MsgWithdrawToken {
+  option (cosmos.msg.v1.signer) = "creator";
+  option (amino.name) = "bridge/MsgWithdrawToken";
+
+  string creator = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  string connection_id = 2;
+  string receiver = 3;
+  cosmos.base.v1beta1.Coin tokens = 4 [
+    (gogoproto.customtype) = "github.com/cosmos/cosmos-sdk/types.Coin",
+    (gogoproto.nullable) = false
+  ];
+  cosmos.base.v1beta1.Coin relay_fee = 5 [
+    (gogoproto.customtype) = "github.com/cosmos/cosmos-sdk/types.Coin",
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Duration expiry_duration = 6
+      [ (gogoproto.stdduration) = true, (gogoproto.nullable) = false ];
+}
+
+message MsgWithdrawTokenResponse {}
+
+message MsgUpdateExternalToken {
+  option (cosmos.msg.v1.signer) = "creator";
+  option (amino.name) = "bridge/MsgUpdateExternalToken";
+
+  string creator = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  string connection_id = 2;
+  string asset_address = 3;
+  string token_name = 4;
+  int64 decimals = 5;
+  bool is_carbon_owned = 6;
+}
+
+message MsgUpdateExternalTokenResponse {}
+
+message MsgDeleteExternalToken {
+  option (cosmos.msg.v1.signer) = "creator";
+  option (amino.name) = "bridge/MsgDeleteExternalToken";
+
+  string creator = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  string connection_id = 2;
+  string denom = 3;
+}
+
+message MsgDeleteExternalTokenResponse {}
+
+message MsgExecuteFromCarbon {
+  option (cosmos.msg.v1.signer) = "creator";
+  option (amino.name) = "bridge/MsgExecuteFromCarbon";
+
+  string creator = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  string connection_id = 2;
+  string execution_contract = 3;
+  string method = 4;
+  bytes execution_bytes = 5;
+  cosmos.base.v1beta1.Coin tokens = 6
+      [ (gogoproto.customtype) = "github.com/cosmos/cosmos-sdk/types.Coin" ];
+  cosmos.base.v1beta1.Coin relay_fee = 7 [
+    (gogoproto.customtype) = "github.com/cosmos/cosmos-sdk/types.Coin",
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Duration expiry_duration = 8
+      [ (gogoproto.stdduration) = true, (gogoproto.nullable) = false ];
+}
+
+message MsgExecuteFromCarbonResponse {}
+
+message MsgStartRelay {
+  option (cosmos.msg.v1.signer) = "relayer";
+  option (amino.name) = "bridge/MsgStartRelay";
+
+  string relayer = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  uint64 nonce = 2;
+}
+
+message MsgStartRelayResponse {}
+
+message MsgPruneExpiredPendingActions {
+  option (cosmos.msg.v1.signer) = "creator";
+  option (amino.name) = "bridge/MsgPruneExpiredPendingActions";
+
+  string creator = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  repeated uint64 nonces = 2;
+}
+
+message MsgPruneExpiredPendingActionsResponse {}
+
+message MsgRevertPendingAction {
+  option (cosmos.msg.v1.signer) = "authority";
+  option (amino.name) = "bridge/MsgRevertPendingAction";
+
+  string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  string connection_id = 2;
+  uint64 nonce = 3;
+  uint64 action_type = 4;
+}
+
+message MsgRevertPendingActionResponse {}
+
+message MsgConfirmPendingAction {
+  option (cosmos.msg.v1.signer) = "authority";
+  option (amino.name) = "bridge/MsgConfirmPendingAction";
+
+  string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  string connection_id = 2;
+  uint64 nonce = 3;
+  uint64 action_type = 4;
+}
+
+message MsgConfirmPendingActionResponse {}
+
+message MsgAddRelayer {
+  option (cosmos.msg.v1.signer) = "authority";
+  option (amino.name) = "bridge/MsgAddRelayer";
+
+  string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  string relayer = 2 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+}
+
+message MsgAddRelayerResponse {}
+
+message MsgRemoveRelayer {
+  option (cosmos.msg.v1.signer) = "authority";
+  option (amino.name) = "bridge/MsgRemoveRelayer";
+
+  string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  string relayer = 2 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+}
+
+message MsgRemoveRelayerResponse {}

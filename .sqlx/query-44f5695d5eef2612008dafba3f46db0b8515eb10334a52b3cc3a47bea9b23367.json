@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO axelar_call_contract_events (nonce, payload_hash, payload, payload_encoding) VALUES ($1, $2, $3, $4)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "44f5695d5eef2612008dafba3f46db0b8515eb10334a52b3cc3a47bea9b23367"
+}

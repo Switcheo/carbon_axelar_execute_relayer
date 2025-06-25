@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM pending_action_events where nonce = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "221593c00680a2838c6e217c421e5914c69d277ae9f35a1ad2a00005d8de759c"
+}

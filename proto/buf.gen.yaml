@@ -1,0 +1,8 @@
+version: v1
+plugins:
+  - plugin: buf.build/community/neoeinstein-prost
+    out: gen
+    opt:
+      - extern_path=.cosmos=::cosmos_sdk_proto::cosmos
+      - extern_path=.google.protobuf=::pbjson_types
+      - compile_well_known_types
