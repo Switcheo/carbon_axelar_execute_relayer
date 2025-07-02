@@ -179,7 +179,7 @@ async fn init_backfiller(chain_config: Chain, pg_pool: Arc<PgPool>) -> Result<()
     }
 }
 
-// backfill will attempt to search the last `max_query_blocks` blocks for any ContractCallApprovedEvent that emitted by `carbon_axelar_gateway`
+// backfill will attempt to search the last `max_query_blocks` blocks for any ContractCallApprovedEvent emitted by `axelar_gateway`
 // This is so that any missed events will be recorded
 async fn backfill(chain_config: Chain, provider: Arc<Provider<Http>>, pg_pool: Arc<PgPool>) -> Result<()> {
     // filter for axelar's gateway
