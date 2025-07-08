@@ -1,15 +1,19 @@
-use anyhow::{Context,Result};
-use base64::Engine;
+use std::str::FromStr;
+
+use anyhow::{Context, Result};
 use base64::engine::general_purpose;
+use base64::Engine;
 use ethers::abi::RawLog;
-use ethers::prelude::{EthEvent, H256, Middleware};
-use ethers::utils::hex::encode_prefixed;
+use ethers::addressbook::Address;
+use ethers::prelude::{EthEvent, Middleware, H256};
+use ethers::utils::hex::{decode, encode_prefixed};
 use sqlx::types::BigDecimal;
 use tracing::{error, info};
 
-use crate::conf::{Chain};
+use crate::conf::Chain;
+use crate::db::evm_events::update_broadcast_status;
 use crate::db::DbContractCallApprovedEvent;
-use crate::evm::broadcaster::{broadcast_tx, init_provider};
+use crate::evm::broadcaster::{broadcast_tx, init_provider, IAxelarGateway};
 use crate::util::evm::ContractCallApprovedEvent;
 
 // Utility function to check if a string is hex
@@ -24,17 +28,27 @@ fn base64_to_hex(base64_str: &str) -> String {
     encode_prefixed(&payload_bytes)
 }
 
-pub async fn execute_contract_call_approved(evm_chains: &Vec<Chain>, chain_id: String, tx_hash: String, payload: String) -> Result<()> {
+pub async fn execute_contract_call_approved(
+    evm_chains: &Vec<Chain>,
+    chain_id: String,
+    tx_hash: String,
+    payload: String,
+) -> Result<()> {
     let chain_config = evm_chains.iter().find(|a| a.chain_id == chain_id).unwrap();
     let chain_config = chain_config.clone();
 
-    info!("Finding ContractCallApproved event on {:?} for tx_hash: {:?} for execution", &chain_config.rpc_url, tx_hash);
+    info!(
+        "Finding ContractCallApproved event on {:?} for tx_hash: {:?} for execution",
+        &chain_config.rpc_url, tx_hash
+    );
 
-    // find event first
     let provider = init_provider(chain_config.clone()).await?;
-    let tx_hash = tx_hash.parse::<H256>().context("tx_hash parse failed")?;
+
+    let axelar_gateway = chain_config.axelar_gateway_proxy.parse::<Address>()?;
+    let axelar_gateway = IAxelarGateway::new(axelar_gateway, provider.clone());
 
     // Fetch the transaction receipt
+    let tx_hash = tx_hash.parse::<H256>().context("tx_hash parse failed")?;
     let receipt = provider.get_transaction_receipt(tx_hash).await?.unwrap();
 
     // Convert payload to hex if necessary
@@ -72,12 +86,37 @@ pub async fn execute_contract_call_approved(evm_chains: &Vec<Chain>, chain_id: S
                 payload: payload_hex.clone(), // Set payload appropriately
             };
 
+            let command_id =
+                H256::from_str(&db_event.command_id).expect("Failed to parse command_id");
+            let contract_address = Address::from_str(&db_event.contract_address)
+                .expect("Failed to parse contract_address");
+            let payload_hash =
+                H256::from_str(&db_event.payload_hash).expect("Failed to parse payload_hash");
+
+            // Query blockchain to check if the contract call has already been approved
+            let is_approved = axelar_gateway
+                .is_contract_call_approved(
+                    command_id.0,
+                    db_event.source_chain.clone(),
+                    db_event.source_address.clone(),
+                    contract_address,
+                    payload_hash.0,
+                )
+                .call()
+                .await
+                .unwrap_or(false);
+            if !is_approved {
+                // If already executed, log and return
+                info!("Skipping event as blockchain query for is_contract_call_approved is !approved. This most likely mean it is already executed, payload_hash: {:?}", &payload_hash);
+                break;
+            }
+
             // Call broadcast_tx function
             // broadcast_tx(chain_config.clone(), db_event, provider.clone()).await.context("Failed broadcast");
             match broadcast_tx(chain_config.clone(), db_event, provider.clone()).await {
                 Ok(_) => {
                     info!("broadcast successful");
-                },
+                }
                 Err(e) => {
                     // Handle the error, log it, and add context
                     error!("Error broadcasting transaction: {:?}", e);
