@@ -86,7 +86,7 @@ cp config.sample.toml config.toml
 
 ```bash
 # download and setup
-VERSION=v0.1.0
+VERSION=v0.1.1
 wget https://github.com/Switcheo/carbon_axelar_execute_relayer/releases/download/$VERSION/carbon_axelar_execute_relayer-x86_64-unknown-linux-gnu.tar.gz
 tar -xvzf carbon_axelar_execute_relayer-x86_64-unknown-linux-gnu.tar.gz
 chmod +x carbon_axelar_execute_relayer
