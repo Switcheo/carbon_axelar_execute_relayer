@@ -7,6 +7,8 @@ pg_url = "postgresql://localhost:5432/carbon_axelar_execute_relayer"
 chain_id = "carbon-localhost"
 # account prefix
 account_prefix = "tswth"
+# fee denom
+fee_denom = "swth"
 # bridge id constant specified on carbon
 axelar_bridge_id = "3"
 # carbon's TM RPC URL

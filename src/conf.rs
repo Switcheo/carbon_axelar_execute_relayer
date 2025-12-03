@@ -29,6 +29,8 @@ pub struct Carbon {
     pub relayer_mnemonic: String,
     pub account_prefix: String,
     pub maximum_start_relay_retry_count: i32,
+    #[serde(default)]
+    pub fee_denom: Option<String>,   // <— optional, defaults to None
 }
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]

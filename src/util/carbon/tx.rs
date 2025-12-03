@@ -43,7 +43,9 @@ async fn create_signed_tx(conf: &Carbon, msg: impl Into<Any>) -> Result<Vec<u8>>
     let signer_info = SignerInfo::single_direct(Some(sender_public_key.into()), sequence);
 
     // set hard-coded gas values into auth_info
-    let fee_coin = Coin::new(100000000, "swth").expect("unable to parse coin");
+    let denom = conf.fee_denom.clone().unwrap_or_else(|| "swth".to_string());
+    let fee_coin = Coin::new(100000000, &denom)
+        .expect("unable to parse fee denom");
     let default_gas: u64 = 1000000000;
     let gas_multiplier: f64 = 1.2;
     let adjusted_gas = (default_gas as f64 * gas_multiplier) as u64;
